@@ -2,7 +2,6 @@
 #include <vector>
 #include <fstream>
 #include <string>
-#include <sstream>
 #include <pthread.h>
 #include <semaphore.h>
 #include <cmath>
@@ -28,20 +27,20 @@ enum state_t {
 	RUNNING
 };
 
-field_t field;
-state_t state = state_t::BEFORE_START;
-unsigned int NUM_WS; // Number of workers
-vector<unsigned char> isReady;
-vector<unsigned char> isFinishedReading;
-vector<pthread_t> threads;
-vector<args_t*> myArgs;
-vector<cond_t> isReadyCV;
-vector<cond_t> isFinishedReadingCV; //Когда все прочитали
-vector<mutex_t> mutexCV;
-vector<sem_t> iterationSems; //Семафоры, следящие за остановкой итераций
-unsigned int stoppedIteration;
-bool gameFinished;
-mutex_t gameFinishedMutex;
+field_t field;								//Поле
+state_t state = state_t::BEFORE_START; 		//Состояние, в котором находится сейчас программа
+unsigned int NUM_WS; 						//Число рабочих
+vector<unsigned char> isReady; 				//Сколько соседей уже занесли свои изменения
+vector<unsigned char> isFinishedReading; 	//Сколько соседей потока уже прочитали данные
+vector<pthread_t> threads; 					//Рабочие
+vector<args_t*> myArgs; 					//Аргументы для потока
+vector<cond_t> isReadyCV; 					//CV для isReady (CV = conditional variable)
+vector<cond_t> isFinishedReadingCV; 		//CV для для isFinishedReading
+vector<mutex_t> mutexCV; 					//Мьютексы для массивов CV выше
+vector<sem_t> iterationSems; 				//Семафоры, следящие за остановкой итераций
+unsigned int stoppedIteration; 				//Текущая итерация
+bool gameFinished; 							//Остановлена ли игра
+mutex_t gameFinishedMutex; 					//Мьютекс для проверки gameFinishedMutex
 
 void initializeStructures() {
 	threads.resize(NUM_WS);
