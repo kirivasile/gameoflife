@@ -61,10 +61,11 @@ void initializeStructures() {
 	gameFinishedMutex = PTHREAD_MUTEX_INITIALIZER;
 }
 
-void startCommand(const string &filePath) {
+int startCommand(const string &filePath) {
 	initializeStructures();
 	ifstream file;
 	file.open(filePath);
+	field.clear();
 	while (!file.eof()) {
 		vector<bool> buf;
 		string str;
@@ -80,6 +81,7 @@ void startCommand(const string &filePath) {
 		field.push_back(buf);
 	}
 	file.close();
+	return field.size();
 }
 
 void randomCommand(const unsigned int &numRows, const unsigned int &numCols) {
@@ -122,9 +124,6 @@ void* runParallel(void* arg) {
 	int y = field[0].size();
 	int range = ceil((double)x / (double)NUM_WS);
 	int upBorder = range * id, downBorder = min(range * (id + 1), x);
-	if (downBorder - upBorder == 0) { //Когда рабочий будет тратить ресурсы впустую
-		return NULL;
-	}
 	int down = (id + NUM_WS + 1) % NUM_WS, up = (id + NUM_WS - 1) % NUM_WS;
 	for (int it = 0; it < numIterations; ++it) {
 		//Подождать пока таблица готова к чтению
@@ -143,29 +142,32 @@ void* runParallel(void* arg) {
 		for (int i = upBorder; i < downBorder; ++i) {
 			for (int j = 0; j < y; ++j) {
 				int numNeighbors = 0;
-				//Исправь на более адекватную систему (ВНИМАНИЕ!)
-				if (bufField[(i + x - 1) % x][j]) {
+				int upper = (i + x - 1) % x;
+				int lower = (i + x + 1) % x;
+				int left = (j + y - 1) % y;
+				int right = (j + y + 1) % y;
+				if (bufField[upper][j]) {
 					numNeighbors++;
 				}
-				if (bufField[(i + x - 1) % x][(j + y - 1) % y]) {
+				if (bufField[upper][left]) {
 					numNeighbors++;
 				}
-				if (bufField[(i + x - 1) % x][(j + y + 1) % y]) {
+				if (bufField[upper][right]) {
 					numNeighbors++;
 				}
-				if (bufField[(i + x + 1) % x][j]) {
+				if (bufField[lower][j]) {
 					numNeighbors++;
 				}
-				if (bufField[(i + x + 1) % x][(j + y - 1) % y]) {
+				if (bufField[lower][left]) {
 					numNeighbors++;
 				}
-				if (bufField[(i + x + 1) % x][(j + y + 1) % y]) {
+				if (bufField[lower][right]) {
 					numNeighbors++;
 				}
-				if (bufField[i][(j + y - 1) % y]) {
+				if (bufField[i][left]) {
 					numNeighbors++;
 				}
-				if (bufField[i][(j + y + 1) % y]) {
+				if (bufField[i][right]) {
 					numNeighbors++;
 				}
 				if (!bufField[i][j] && numNeighbors == 3) {
@@ -222,17 +224,17 @@ void* runParallel(void* arg) {
 			printf("Pid: %d - sem_post failed\n", id);
 			return NULL;
 		}
-		//pthread_mutex_lock(&gameFinishedMutex);
+		pthread_mutex_lock(&gameFinishedMutex);
 		if (gameFinished) {
 			if (id == 0) {
 				stoppedIteration += it;
 				printf("Stopped at iteration #%d\n", stoppedIteration);
 			}
 			isFinishedReading[id] = 2;
-			//pthread_mutex_unlock(&gameFinishedMutex);
+			pthread_mutex_unlock(&gameFinishedMutex);
 			return NULL;
 		}
-		//pthread_mutex_unlock(&gameFinishedMutex);
+		pthread_mutex_unlock(&gameFinishedMutex);
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
@@ -281,13 +283,23 @@ int main() {
 				cout << "The system has already started\n";
 				continue;
 			}
-			startCommand(filePath);
+			int numRows = startCommand(filePath);
+			if (numWorkers >= numRows) {
+				cout << "Number of workers should be not greater than number of workers\n";
+				state = state_t::BEFORE_START;
+				continue;
+			}
 		}
 		else if (command == "RANDOM") {
 			int numRows;
 			int numCols;
-			cin >> numRows >> numCols;
-			if (numRows < 1 || numCols < 1) {
+			int numWorkers = 1;
+			cin >> numWorkers >> numRows >> numCols;
+			if (numWorkers >= numRows) {
+				cout << "Number of workers should be not greater than number of workers\n";
+				continue;
+			}
+			if (numRows < 1 || numCols < 1 || numWorkers < 1) {
 				cout << "Please, enter positive numbers\n";
 				continue;
 			}
@@ -295,6 +307,7 @@ int main() {
 				cout << "The system has already started\n";
 				continue;
 			}
+			NUM_WS = numWorkers;
 			randomCommand(numRows, numCols);
 		}
 		else if (command == "RUN") {
@@ -330,6 +343,10 @@ int main() {
 			statusCommand();
 		}
 		else if (command == "STOP") {
+			if (state != state_t::RUNNING) {
+				cout << "The system isn't running. Please, use RUN or START\n";
+				continue;
+			}
 			stopCommand();
 		}
 		else if (command == "QUIT") {
@@ -338,9 +355,11 @@ int main() {
 		}
 		else if (command == "HELP") {
 			cout << "\nList of commands:\n";
-			cout << "  START n file : n - number of workers, file - name of file with field\n";
-			cout << "  RANDOM x y   : random field generation x - num of rows, y - num of cols\n";
-			cout << "  STOP         : stop workers immedeately\n";
+			cout << "  START n file : n - number of workers, file - name of file with field,\n";
+			cout << "                 number of workers must be not greater than number of rows\n";
+			cout << "  RANDOM n x y : random field generation, n - number of workers,\n";
+			cout << "                 x - num of rows, y - num of cols\n";
+			cout << "  STOP         : stop workers immediately\n";
 			cout << "  STATUS       : print current iteration and field. Use STOP before using it\n";
 			cout << "  QUIT         : quit the game\n";
 			cout << "  HELP         : short commands guide\n\n";
