@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <cmath>
+#include <ctime>
 
 using namespace std;
 
@@ -38,8 +39,9 @@ vector<cond_t> isReadyCV;
 vector<cond_t> isFinishedReadingCV; //Когда все прочитали
 vector<mutex_t> mutexCV;
 vector<sem_t> iterationSems; //Семафоры, следящие за остановкой итераций
-unsigned int stoppedIteration = 0;
-bool gameFinished = false;
+unsigned int stoppedIteration;
+bool gameFinished;
+mutex_t gameFinishedMutex;
 
 void initializeStructures() {
 	threads.resize(NUM_WS);
@@ -54,9 +56,10 @@ void initializeStructures() {
 	for (int i = 0; i < NUM_WS; ++i) {
 		sem_init(&iterationSems[i], 0, 1);
 	}
+	stoppedIteration = 0;
+	gameFinished = false;
+	gameFinishedMutex = PTHREAD_MUTEX_INITIALIZER;
 }
-
-void statusCommand();
 
 void startCommand(const string &filePath) {
 	initializeStructures();
@@ -79,6 +82,34 @@ void startCommand(const string &filePath) {
 	file.close();
 }
 
+void randomCommand(const unsigned int &numRows, const unsigned int &numCols) {
+	initializeStructures();
+	vector<bool> buf(numCols, false);
+	field.resize(numRows, buf);
+	srand(time(0));
+	for (int i = 0; i < numRows; ++i) {
+		for (int j = 0; j < numCols; ++j) {
+			field[i][j] = rand() % 2;
+		}
+	}
+}
+
+void statusCommand() {
+	int x = field.size();
+	if (x < 1) {
+		cout << "Error in taking number of rows\n";
+		return;
+	}
+	cout << "Iteration #" << stoppedIteration << "\n";
+	int y = field[0].size();
+	for (int i = 0; i < x; ++i) {
+		for (int j = 0; j < y; ++j) {
+			cout << field[i][j] << " ";
+		}
+		cout << "\n";
+	}
+}
+
 void* runParallel(void* arg) {
 	args_t* arg_str = (args_t*)arg;
 	int numIterations = arg_str->numIterations;
@@ -91,6 +122,9 @@ void* runParallel(void* arg) {
 	int y = field[0].size();
 	int range = ceil((double)x / (double)NUM_WS);
 	int upBorder = range * id, downBorder = min(range * (id + 1), x);
+	if (downBorder - upBorder == 0) { //Когда рабочий будет тратить ресурсы впустую
+		return NULL;
+	}
 	int down = (id + NUM_WS + 1) % NUM_WS, up = (id + NUM_WS - 1) % NUM_WS;
 	for (int it = 0; it < numIterations; ++it) {
 		//Подождать пока таблица готова к чтению
@@ -188,38 +222,22 @@ void* runParallel(void* arg) {
 			printf("Pid: %d - sem_post failed\n", id);
 			return NULL;
 		}
+		//pthread_mutex_lock(&gameFinishedMutex);
 		if (gameFinished) {
-			//printf("Pid: %d completed %d iterations\n", id, it); //DEBUG
 			if (id == 0) {
 				stoppedIteration += it;
 				printf("Stopped at iteration #%d\n", stoppedIteration);
 			}
-			//printf("Pid: %d stopped\n", id);
 			isFinishedReading[id] = 2;
+			//pthread_mutex_unlock(&gameFinishedMutex);
 			return NULL;
 		}
+		//pthread_mutex_unlock(&gameFinishedMutex);
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
 	}
 	return NULL;
-}
-
-void statusCommand() {
-	int x = field.size();
-	if (x < 1) {
-		cout << "Error in taking number of rows\n";
-		return;
-	}
-	//Добавить информацию о текущей итерации (ВНИМАНИЕ!)
-	cout << "Iteration #" << stoppedIteration << "\n";
-	int y = field[0].size();
-	for (int i = 0; i < x; ++i) {
-		for (int j = 0; j < y; ++j) {
-			cout << field[i][j] << " ";
-		}
-		cout << "\n";
-	}
 }
 
 void stopCommand() {
@@ -237,53 +255,59 @@ void stopCommand() {
 }
 
 void quitCommand() {
-	/*for (int i = 0; i < NUM_WS; ++i) {
-		pthread_join(threads[i], NULL);
-	}*/
 	for (int i = 0; i < NUM_WS; ++i) {
 		sem_destroy(&iterationSems[i]);
+		pthread_mutex_destroy(&mutexCV[i]);
 	}
-	//Не забудь уничтожить мьютексы (ВНИМАНИЕ!)
 }
 
 int main() {
 	string command;
+	cout << "To show the list of commands type HELP\n";
 	while(true) {
 		cout << "$ ";
 		cin >> command;
 		if (command == "START") {
 			int numWorkers = 1;
 			cin >> numWorkers;
-			if (numWorkers < 1) {
-				cout << "Please, enter positive number of workers\n";
-				break;
-			}
 			NUM_WS = numWorkers;
 			string filePath;
 			cin >> filePath;
+			if (numWorkers < 1) {
+				cout << "Please, enter positive number of workers\n";
+				continue;
+			}
 			if (state != state_t::BEFORE_START) {
 				cout << "The system has already started\n";
-				break;
+				continue;
 			}
 			startCommand(filePath);
 		}
-		if (command == "RUN") {
+		else if (command == "RANDOM") {
+			int numRows;
+			int numCols;
+			cin >> numRows >> numCols;
+			if (numRows < 1 || numCols < 1) {
+				cout << "Please, enter positive numbers\n";
+				continue;
+			}
+			if (state != state_t::BEFORE_START) {
+				cout << "The system has already started\n";
+				continue;
+			}
+			randomCommand(numRows, numCols);
+		}
+		else if (command == "RUN") {
 			int numIterations;
 			cin >> numIterations;
 			if (numIterations < 1) {
 				cout << "Please, enter positive number of iterations\n";
-				break;
+				continue;
 			}
 			if (state == state_t::BEFORE_START) {
 				cout << "The system didn't start, please use the command START\n";
-				break;
+				continue;
 			}
-			/*args_t *arg1 = new args_t(numIterations, 0);
-			args_t *arg2 = new args_t(numIterations, 1);
-			args_t *arg3 = new args_t(numIterations, 2);
-			pthread_create(&t1, NULL, runParallel, arg1);
-			pthread_create(&t2, NULL, runParallel, arg2);
-			pthread_create(&t3, NULL, runParallel, arg3);*/
 			for (int i = 0; i < NUM_WS; ++i) {
 				myArgs[i] = new args_t(numIterations,i);
 			}
@@ -294,26 +318,34 @@ int main() {
 			}
 
 		}
-		if (command == "STATUS") {
+		else if (command == "STATUS") {
 			if (state == state_t::BEFORE_START) {
-				cout << "The system didn't start, please use the command START\n";
-				break;
+				cout << "The system hasn't started, please use the command START\n";
+				continue;
 			}
 			if (state == state_t::RUNNING) {
-				cout << "The system is running know, please wait \n";
-				break;
+				cout << "The system is running know, please use the command STOP first\n";
+				continue;
 			}
 			statusCommand();
 		}
-		if (command == "STOP") {
+		else if (command == "STOP") {
 			stopCommand();
-			/*pthread_join(t1, NULL);
-			pthread_join(t2, NULL);
-			pthread_join(t3, NULL);*/
 		}
-		if (command == "QUIT") {
+		else if (command == "QUIT") {
 			quitCommand();
 			break;
+		}
+		else if (command == "HELP") {
+			cout << "\nList of commands:\n";
+			cout << "  START n file : n - number of workers, file - name of file with field\n";
+			cout << "  RANDOM x y   : random field generation x - num of rows, y - num of cols\n";
+			cout << "  STOP         : stop workers immedeately\n";
+			cout << "  STATUS       : print current iteration and field. Use STOP before using it\n";
+			cout << "  QUIT         : quit the game\n";
+			cout << "  HELP         : short commands guide\n\n";
+		} else {
+			cout << "Wrong command. Type HELP for the list\n";
 		}
 	}
 	return 0;
