@@ -349,6 +349,18 @@ int main() {
 			}
 			stopCommand();
 		}
+		else if (command == "WAIT") {
+			if (state != state_t::RUNNING) {
+				cout << "The system isn't running. Please, use RUN or START\n";
+				continue;
+			}
+			for (int i = 0; i < NUM_WS; ++i) {
+				pthread_join(threads[i], NULL);
+			}
+			state = state_t::STARTED;
+			quitCommand();
+			break;
+		}
 		else if (command == "QUIT") {
 			quitCommand();
 			break;
@@ -361,6 +373,7 @@ int main() {
 			cout << "                 x - num of rows, y - num of cols\n";
 			cout << "  STOP         : stop workers immediately\n";
 			cout << "  STATUS       : print current iteration and field. Use STOP before using it\n";
+			cout << "  WAIT 		: wait till the workers stop and quit the programm.\n";
 			cout << "  QUIT         : quit the game\n";
 			cout << "  HELP         : short commands guide\n\n";
 		} else {
