@@ -329,7 +329,34 @@ int main() {
 			for (int i = 0; i < NUM_WS; ++i) {
 				pthread_create(&threads[i], NULL, runParallel, myArgs[i]);
 			}
-
+		}
+		else if (command == "TIMERUN") {
+			int numIterations;
+			cin >> numIterations;
+			if (numIterations < 1) {
+				cout << "Please, enter positive number of iterations\n";
+				continue;
+			}
+			if (state == state_t::BEFORE_START) {
+				cout << "The system didn't start, please use the command START\n";
+				continue;
+			}
+			for (int i = 0; i < NUM_WS; ++i) {
+				myArgs[i] = new args_t(numIterations,i);
+			}
+			gameFinished = false;
+			state = state_t::RUNNING;
+			unsigned int start = clock();
+			for (int i = 0; i < NUM_WS; ++i) {
+				pthread_create(&threads[i], NULL, runParallel, myArgs[i]);
+			}
+			for (int i = 0; i < NUM_WS; ++i) {
+				pthread_join(threads[i], NULL);
+			}
+			unsigned int end = clock();
+			cout << "\n" << numIterations << " iterations were completed in ";
+			cout << (end - start) << " ms\n";
+			state = state_t::STARTED;
 		}
 		else if (command == "STATUS") {
 			if (state == state_t::BEFORE_START) {
@@ -371,9 +398,11 @@ int main() {
 			cout << "                 number of workers must be not greater than number of rows\n";
 			cout << "  RANDOM n x y : random field generation, n - number of workers,\n";
 			cout << "                 x - num of rows, y - num of cols\n";
+			cout << "  RUN n        : run n iterations\n";
+			cout << "  TIMERUN n    : run n iterations with showing the time, and automatically stop\n";
 			cout << "  STOP         : stop workers immediately\n";
 			cout << "  STATUS       : print current iteration and field. Use STOP before using it\n";
-			cout << "  WAIT 		: wait till the workers stop and quit the programm.\n";
+			cout << "  WAIT         : wait till the workers stop and quit the programm.\n";
 			cout << "  QUIT         : quit the game\n";
 			cout << "  HELP         : short commands guide\n\n";
 		} else {
