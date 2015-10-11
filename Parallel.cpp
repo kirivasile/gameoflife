@@ -346,16 +346,19 @@ int main() {
 			}
 			gameFinished = false;
 			state = state_t::RUNNING;
-			unsigned int start = clock();
+			time_t startTimer;
+			time_t endTimer;
+			time(&startTimer);
 			for (int i = 0; i < NUM_WS; ++i) {
 				pthread_create(&threads[i], NULL, runParallel, myArgs[i]);
 			}
 			for (int i = 0; i < NUM_WS; ++i) {
 				pthread_join(threads[i], NULL);
 			}
-			unsigned int end = clock();
+			time(&endTimer);
+			double seconds = difftime(endTimer, startTimer);
 			cout << "\n" << numIterations << " iterations were completed in ";
-			cout << (end - start) << " ms\n";
+			cout << seconds << " sec\n";
 			state = state_t::STARTED;
 		}
 		else if (command == "STATUS") {
