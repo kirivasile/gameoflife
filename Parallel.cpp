@@ -42,6 +42,7 @@ vector<sem_t> iterationSems; 			//Семафоры, следящие за ост
 unsigned int stoppedIteration; 			//Текущая итерация
 bool gameFinished; 				//Остановлена ли игра
 mutex_t gameFinishedMutex; 			//Мьютекс для проверки gameFinishedMutex
+pthread_barrier_t iterationBarrier;
 
 void initializeStructures() {
 	threads.resize(NUM_WS);
@@ -59,6 +60,7 @@ void initializeStructures() {
 	stoppedIteration = 0;
 	gameFinished = false;
 	gameFinishedMutex = PTHREAD_MUTEX_INITIALIZER;
+	pthread_barrier_init(&iterationBarrier, NULL, NUM_WS);
 }
 
 int startCommand(const string &filePath) {
@@ -235,6 +237,7 @@ void* runParallel(void* arg) {
 			return NULL;
 		}
 		pthread_mutex_unlock(&gameFinishedMutex);
+		pthread_barrier_wait(&iterationBarrier);
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
