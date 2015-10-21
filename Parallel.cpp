@@ -27,12 +27,14 @@ enum state_t {
 	RUNNING
 };
 
+
 //Отступы до комментариев зависят от редактора, я выбрал тот, который хорошо показывает github
 field_t field;					//Поле
 state_t state = state_t::BEFORE_START; 		//Состояние, в котором находится сейчас программа
 unsigned int NUM_WS; 				//Число рабочих
 vector<unsigned char> isReady; 			//Сколько соседей уже занесли свои изменения
-vector<unsigned char> isFinishedReading; 	//Сколько соседей потока уже прочитали данные
+vector<bool> isFinishedReadingDown;		//Когда прочитали нижнего соседа
+vector<bool> isFinishedReadingUp;		//Когда прочитали верхнего соседа
 vector<pthread_t> threads; 			//Рабочие
 vector<args_t*> myArgs; 			//Аргументы для потока
 vector<cond_t> isReadyCV; 			//CV для isReady (CV = conditional variable)
@@ -42,7 +44,6 @@ vector<sem_t> iterationSems; 			//Семафоры, следящие за ост
 unsigned int stoppedIteration; 			//Текущая итерация
 bool gameFinished; 				//Остановлена ли игра
 mutex_t gameFinishedMutex; 			//Мьютекс для проверки gameFinishedMutex
-pthread_barrier_t iterationBarrier;
 
 void initializeStructures() {
 	threads.resize(NUM_WS);
@@ -52,7 +53,8 @@ void initializeStructures() {
 	isFinishedReadingCV = vector<cond_t>(NUM_WS, PTHREAD_COND_INITIALIZER);
 	mutexCV = vector<mutex_t>(NUM_WS, PTHREAD_MUTEX_INITIALIZER);
 	isReady = vector<unsigned char>(NUM_WS, 2);
-	isFinishedReading = vector<unsigned char>(NUM_WS, 0);
+	isFinishedReadingDown = vector<bool>(NUM_WS, false);
+	isFinishedReadingUp = vector<bool>(NUM_WS, false);
 	iterationSems.resize(NUM_WS);
 	for (int i = 0; i < NUM_WS; ++i) {
 		sem_init(&iterationSems[i], 0, 1);
@@ -182,22 +184,21 @@ void* runParallel(void* arg) {
 		}
 		//Перед тем, как закрывать доступ к чтению, нужно убедиться, что соседи прочитали
 		pthread_mutex_lock(&mutexCV[id]);
-		isFinishedReading[id] = 2;
+		isFinishedReadingUp[id] = true;
+		isFinishedReadingDown[id] = true;
 		pthread_cond_broadcast(&isFinishedReadingCV[id]);
 		pthread_mutex_unlock(&mutexCV[id]);
 
 		pthread_mutex_lock(&mutexCV[down]);
-		while (isFinishedReading[down] < 1) {
+		while(!isFinishedReadingUp[down]) {
 			pthread_cond_wait(&isFinishedReadingCV[down], &mutexCV[down]);
 		}
-		--isFinishedReading[down];
 		pthread_mutex_unlock(&mutexCV[down]);
 
 		pthread_mutex_lock(&mutexCV[up]);
-		while (isFinishedReading[up] < 1) {
+		while(!isFinishedReadingDown[up]) {
 			pthread_cond_wait(&isFinishedReadingCV[up], &mutexCV[up]);
 		}
-		--isFinishedReading[up];
 		pthread_mutex_unlock(&mutexCV[up]);
 
 		for (int i = upBorder; i < downBorder; ++i) {
@@ -232,12 +233,12 @@ void* runParallel(void* arg) {
 				stoppedIteration += it;
 				printf("Stopped at iteration #%d\n", stoppedIteration);
 			}
-			isFinishedReading[id] = 2;
+			isFinishedReadingUp[id] = true;
+			isFinishedReadingDown[id] = true;
 			pthread_mutex_unlock(&gameFinishedMutex);
 			return NULL;
 		}
 		pthread_mutex_unlock(&gameFinishedMutex);
-		pthread_barrier_wait(&iterationBarrier);
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
