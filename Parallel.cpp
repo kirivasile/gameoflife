@@ -32,7 +32,9 @@ enum state_t {
 field_t field;					//Поле
 state_t state = state_t::BEFORE_START; 		//Состояние, в котором находится сейчас программа
 unsigned int NUM_WS; 				//Число рабочих
-vector<unsigned char> isReady; 			//Сколько соседей уже занесли свои изменения
+//vector<unsigned char> isReady; 			//Сколько соседей уже занесли свои изменения
+vector<bool> isFinishedWritingToDown;
+vector<bool> isFinishedWritingToUp;
 vector<bool> isFinishedReadingDown;		//Когда прочитали нижнего соседа
 vector<bool> isFinishedReadingUp;		//Когда прочитали верхнего соседа
 vector<pthread_t> threads; 			//Рабочие
@@ -52,9 +54,11 @@ void initializeStructures() {
 	isReadyCV = vector<cond_t>(NUM_WS, PTHREAD_COND_INITIALIZER);
 	isFinishedReadingCV = vector<cond_t>(NUM_WS, PTHREAD_COND_INITIALIZER);
 	mutexCV = vector<mutex_t>(NUM_WS, PTHREAD_MUTEX_INITIALIZER);
-	isReady = vector<unsigned char>(NUM_WS, 2);
+	//isReady = vector<unsigned char>(NUM_WS, 2);
 	isFinishedReadingDown = vector<bool>(NUM_WS, false);
 	isFinishedReadingUp = vector<bool>(NUM_WS, false);
+	isFinishedWritingToDown = vector<bool>(NUM_WS, false);
+	isFinishedWritingToUp = vector<bool>(NUM_WS, false);
 	iterationSems.resize(NUM_WS);
 	for (int i = 0; i < NUM_WS; ++i) {
 		sem_init(&iterationSems[i], 0, 1);
@@ -129,14 +133,6 @@ void* runParallel(void* arg) {
 	int upBorder = range * id, downBorder = min(range * (id + 1), x);
 	int down = (id + NUM_WS + 1) % NUM_WS, up = (id + NUM_WS - 1) % NUM_WS;
 	for (int it = 0; it < numIterations; ++it) {
-		//Подождать пока таблица готова к чтению
-		pthread_mutex_lock(&mutexCV[id]);
-		while(isReady[id] < 2) {
-			pthread_cond_wait(&isReadyCV[id], &mutexCV[id]);
-		}
-		//Говорим, что информация в таблице - неактуальная
-		isReady[id] = 0;
-		pthread_mutex_unlock(&mutexCV[id]);
 		vector<vector<bool> > bufField = field;
 		vector<vector<bool> > bufWriteField = vector<vector<bool> >(downBorder - upBorder);
 		for (int i = 0; i < downBorder - upBorder; ++i) {
@@ -181,7 +177,6 @@ void* runParallel(void* arg) {
 				}
 			}
 		}
-		//Перед тем, как закрывать доступ к чтению, нужно убедиться, что соседи прочитали
 		pthread_mutex_lock(&mutexCV[id]);
 		isFinishedReadingUp[id] = true;
 		isFinishedReadingDown[id] = true;
@@ -203,17 +198,25 @@ void* runParallel(void* arg) {
 		for (int i = upBorder; i < downBorder; ++i) {
 			field[i] = bufWriteField[i - upBorder];
 		}
-		//Посылаем сигнал, что данные обновились
+
+		pthread_mutex_lock(&mutexCV[id]);
+		isFinishedWritingToUp[id] = true;
+		isFinishedWritingToDown[id] = true;
+		pthread_cond_broadcast(&isFinishedReadingCV[id]);
+		pthread_mutex_unlock(&mutexCV[id]);
+
 		pthread_mutex_lock(&mutexCV[down]);
-		++isReady[down];
-		pthread_cond_broadcast(&isReadyCV[down]);
+		while(!isFinishedWritingToUp[down]) {
+			pthread_cond_wait(&isFinishedReadingCV[down], &mutexCV[down]);
+		}
 		pthread_mutex_unlock(&mutexCV[down]);
-		
+
 		pthread_mutex_lock(&mutexCV[up]);
-		++isReady[up];
-		pthread_cond_broadcast(&isReadyCV[up]);
+		while(!isFinishedWritingToDown[up]) {
+			pthread_cond_wait(&isFinishedReadingCV[up], &mutexCV[up]);
+		}
 		pthread_mutex_unlock(&mutexCV[up]);
-		
+
 		//Проверяем, не остановил ли нас master
 		int lockStatus;
 		lockStatus = sem_wait(&iterationSems[id]);
