@@ -62,7 +62,6 @@ void initializeStructures() {
 	stoppedIteration = 0;
 	gameFinished = false;
 	gameFinishedMutex = PTHREAD_MUTEX_INITIALIZER;
-	pthread_barrier_init(&iterationBarrier, NULL, NUM_WS);
 }
 
 int startCommand(const string &filePath) {
