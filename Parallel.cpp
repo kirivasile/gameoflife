@@ -178,6 +178,7 @@ void* runParallel(void* arg) {
 			}
 		}
 		pthread_mutex_lock(&mutexCV[id]);
+
 		isFinishedReadingUp[id] = true;
 		isFinishedReadingDown[id] = true;
 		pthread_cond_broadcast(&isFinishedReadingCV[id]);
@@ -237,6 +238,8 @@ void* runParallel(void* arg) {
 			}
 			isFinishedReadingUp[id] = true;
 			isFinishedReadingDown[id] = true;
+			isFinishedWritingToUp[down] = true;
+			isFinishedWritingToDown[up] = true;
 			pthread_mutex_unlock(&gameFinishedMutex);
 			return NULL;
 		}
