@@ -225,12 +225,6 @@ void* runParallel(void* arg) {
 			printf("Pid: %d - sem_wait failed\n", id);
 			return NULL;
 		}
-		lockStatus = sem_post(&iterationSems[id]);
-		if (lockStatus != 0) {
-			printf("Pid: %d - sem_post failed\n", id);
-			return NULL;
-		}
-		pthread_mutex_lock(&gameFinishedMutex);
 		if (gameFinished) {
 			if (id == 0) {
 				stoppedIteration += it;
@@ -241,9 +235,14 @@ void* runParallel(void* arg) {
 			isFinishedWritingToUp[down] = true;
 			isFinishedWritingToDown[up] = true;
 			pthread_mutex_unlock(&gameFinishedMutex);
+			lockStatus = sem_post(&iterationSems[id]);
 			return NULL;
 		}
-		pthread_mutex_unlock(&gameFinishedMutex);
+		lockStatus = sem_post(&iterationSems[id]);
+		if (lockStatus != 0) {
+			printf("Pid: %d - sem_post failed\n", id);
+			return NULL;
+		}
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
