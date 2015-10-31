@@ -54,7 +54,6 @@ void initializeStructures() {
 	isReadyCV = vector<cond_t>(NUM_WS, PTHREAD_COND_INITIALIZER);
 	isFinishedReadingCV = vector<cond_t>(NUM_WS, PTHREAD_COND_INITIALIZER);
 	mutexCV = vector<mutex_t>(NUM_WS, PTHREAD_MUTEX_INITIALIZER);
-	//isReady = vector<unsigned char>(NUM_WS, 2);
 	isFinishedReadingDown = vector<bool>(NUM_WS, false);
 	isFinishedReadingUp = vector<bool>(NUM_WS, false);
 	isFinishedWritingToDown = vector<bool>(NUM_WS, false);
@@ -178,7 +177,6 @@ void* runParallel(void* arg) {
 			}
 		}
 		pthread_mutex_lock(&mutexCV[id]);
-
 		isFinishedReadingUp[id] = true;
 		isFinishedReadingDown[id] = true;
 		pthread_cond_broadcast(&isFinishedReadingCV[id]);
@@ -188,12 +186,14 @@ void* runParallel(void* arg) {
 		while(!isFinishedReadingUp[down]) {
 			pthread_cond_wait(&isFinishedReadingCV[down], &mutexCV[down]);
 		}
+		isFinishedReadingUp[down] = false;
 		pthread_mutex_unlock(&mutexCV[down]);
 
 		pthread_mutex_lock(&mutexCV[up]);
 		while(!isFinishedReadingDown[up]) {
 			pthread_cond_wait(&isFinishedReadingCV[up], &mutexCV[up]);
 		}
+		isFinishedReadingDown[up] = false;
 		pthread_mutex_unlock(&mutexCV[up]);
 
 		for (int i = upBorder; i < downBorder; ++i) {
@@ -210,12 +210,14 @@ void* runParallel(void* arg) {
 		while(!isFinishedWritingToUp[down]) {
 			pthread_cond_wait(&isFinishedReadingCV[down], &mutexCV[down]);
 		}
+		isFinishedWritingToUp[down] = false;
 		pthread_mutex_unlock(&mutexCV[down]);
 
 		pthread_mutex_lock(&mutexCV[up]);
 		while(!isFinishedWritingToDown[up]) {
 			pthread_cond_wait(&isFinishedReadingCV[up], &mutexCV[up]);
 		}
+		isFinishedWritingToDown[up] = false;
 		pthread_mutex_unlock(&mutexCV[up]);
 
 		//Проверяем, не остановил ли нас master
