@@ -6,6 +6,7 @@
 #include <semaphore.h>
 #include <cmath>
 #include <ctime>
+#include <stdio.h>
 
 using namespace std;
 
@@ -129,7 +130,7 @@ void* runParallel(void* arg) {
 	}
 	int y = field[0].size();
 	int range = ceil((double)x / (double)NUM_WS);
-	int upBorder = range * id, downBorder = min(range * (id + 1), x);
+	int upBorder = min(range * id, x), downBorder = min(range * (id + 1), x);
 	int down = (id + NUM_WS + 1) % NUM_WS, up = (id + NUM_WS - 1) % NUM_WS;
 	for (int it = 0; it < numIterations; ++it) {
 		vector<vector<bool> > bufField = field;
@@ -221,12 +222,18 @@ void* runParallel(void* arg) {
 		pthread_mutex_unlock(&mutexCV[up]);
 
 		//Проверяем, не остановил ли нас master
-		int lockStatus;
+		/*int lockStatus;
 		lockStatus = sem_wait(&iterationSems[id]);
 		if (lockStatus != 0) {
 			printf("Pid: %d - sem_wait failed\n", id);
 			return NULL;
 		}
+		lockStatus = sem_post(&iterationSems[id]);
+		if (lockStatus != 0) {
+			printf("Pid: %d - sem_post failed\n", id);
+			return NULL;
+		}
+		pthread_mutex_lock(&gameFinishedMutex);
 		if (gameFinished) {
 			if (id == 0) {
 				stoppedIteration += it;
@@ -240,11 +247,7 @@ void* runParallel(void* arg) {
 			lockStatus = sem_post(&iterationSems[id]);
 			return NULL;
 		}
-		lockStatus = sem_post(&iterationSems[id]);
-		if (lockStatus != 0) {
-			printf("Pid: %d - sem_post failed\n", id);
-			return NULL;
-		}
+		pthread_mutex_unlock(&gameFinishedMutex);*/
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
@@ -253,13 +256,13 @@ void* runParallel(void* arg) {
 }
 
 void stopCommand() {
-	for (int i = 0; i < NUM_WS; ++i) {
+	/*for (int i = 0; i < NUM_WS; ++i) {
 		sem_wait(&iterationSems[i]);
 	}
 	gameFinished = true;
 	for (int i = 0; i < NUM_WS; ++i) {
 		sem_post(&iterationSems[i]);
-	}
+	}*/
 	for (int i = 0; i < NUM_WS; ++i) {
 		pthread_join(threads[i], NULL);
 	}
@@ -294,8 +297,8 @@ int main() {
 				continue;
 			}
 			int numRows = startCommand(filePath);
-			if (numWorkers >= numRows) {
-				cout << "Number of workers should be not greater than number of workers\n";
+			if (numWorkers * 2 > numRows) {
+				cout << "Number of workers should be not greater than half number of rows\n";
 				state = state_t::BEFORE_START;
 				continue;
 			}
@@ -305,12 +308,12 @@ int main() {
 			int numCols;
 			int numWorkers = 1;
 			cin >> numWorkers >> numRows >> numCols;
-			if (numWorkers >= numRows) {
-				cout << "Number of workers should be not greater than number of workers\n";
-				continue;
-			}
 			if (numRows < 1 || numCols < 1 || numWorkers < 1) {
 				cout << "Please, enter positive numbers\n";
+				continue;
+			}
+			if (numWorkers * 2 > numRows) {
+				cout << "Number of workers should be not greater than half number of rows\n";
 				continue;
 			}
 			if (state != state_t::BEFORE_START) {
