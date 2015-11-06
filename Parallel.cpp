@@ -29,43 +29,27 @@ enum state_t {
 };
 
 
-//Отступы до комментариев зависят от редактора, я выбрал тот, который хорошо показывает github
-field_t field;					//Поле
+field_t field, field2;					//Поле
 state_t state = state_t::BEFORE_START; 		//Состояние, в котором находится сейчас программа
-unsigned int NUM_WS; 				//Число рабочих
-//vector<unsigned char> isReady; 			//Сколько соседей уже занесли свои изменения
-vector<bool> isFinishedWritingToDown;
-vector<bool> isFinishedWritingToUp;
-vector<bool> isFinishedReadingDown;		//Когда прочитали нижнего соседа
-vector<bool> isFinishedReadingUp;		//Когда прочитали верхнего соседа
+unsigned int NUM_WS;				//Число потоков
 vector<pthread_t> threads; 			//Рабочие
 vector<args_t*> myArgs; 			//Аргументы для потока
-vector<cond_t> isReadyCV; 			//CV для isReady (CV = conditional variable)
-vector<cond_t> isFinishedReadingCV; 		//CV для для isFinishedReading
-vector<mutex_t> mutexCV; 			//Мьютексы для массивов CV выше
-vector<sem_t> iterationSems; 			//Семафоры, следящие за остановкой итераций
+vector<bool> isReady;					
 unsigned int stoppedIteration; 			//Текущая итерация
 bool gameFinished; 				//Остановлена ли игра
-mutex_t gameFinishedMutex; 			//Мьютекс для проверки gameFinishedMutex
+int whichTable = 0;				//Какую таблицу использовать для чтения
+sem_t iterationSem;				
+mutex_t mutexCV;
+cond_t iterationCV;
+
 
 void initializeStructures() {
 	threads.resize(NUM_WS);
 	myArgs.resize(NUM_WS);
 	state = state_t::STARTED;
-	isReadyCV = vector<cond_t>(NUM_WS, PTHREAD_COND_INITIALIZER);
-	isFinishedReadingCV = vector<cond_t>(NUM_WS, PTHREAD_COND_INITIALIZER);
-	mutexCV = vector<mutex_t>(NUM_WS, PTHREAD_MUTEX_INITIALIZER);
-	isFinishedReadingDown = vector<bool>(NUM_WS, false);
-	isFinishedReadingUp = vector<bool>(NUM_WS, false);
-	isFinishedWritingToDown = vector<bool>(NUM_WS, false);
-	isFinishedWritingToUp = vector<bool>(NUM_WS, false);
-	iterationSems.resize(NUM_WS);
-	for (int i = 0; i < NUM_WS; ++i) {
-		sem_init(&iterationSems[i], 0, 1);
-	}
+	isReady.resize(NUM_WS, false);
 	stoppedIteration = 0;
 	gameFinished = false;
-	gameFinishedMutex = PTHREAD_MUTEX_INITIALIZER;
 }
 
 int startCommand(const string &filePath) {
@@ -73,6 +57,7 @@ int startCommand(const string &filePath) {
 	ifstream file;
 	file.open(filePath);
 	field.clear();
+	field2.clear();
 	while (!file.eof()) {
 		vector<bool> buf;
 		string str;
@@ -86,6 +71,7 @@ int startCommand(const string &filePath) {
 			}
 		}
 		field.push_back(buf);
+		field2.push_back(buf);
 	}
 	file.close();
 	return field.size();
@@ -95,10 +81,13 @@ void randomCommand(const unsigned int &numRows, const unsigned int &numCols) {
 	initializeStructures();
 	vector<bool> buf(numCols, false);
 	field.resize(numRows, buf);
+	field2.resize(numRows, buf);
 	srand(time(0));
 	for (int i = 0; i < numRows; ++i) {
 		for (int j = 0; j < numCols; ++j) {
-			field[i][j] = rand() % 2;
+			bool value = rand() % 2;
+			field[i][j] = value;
+			field2[i][j] = value;
 		}
 	}
 }
@@ -113,7 +102,11 @@ void statusCommand() {
 	int y = field[0].size();
 	for (int i = 0; i < x; ++i) {
 		for (int j = 0; j < y; ++j) {
-			cout << field[i][j] << " ";
+			if (whichTable == 0) {
+				cout << field[i][j] << " ";
+			} else {
+				cout << field2[i][j] << " ";
+			}
 		}
 		cout << "\n";
 	}
@@ -132,12 +125,15 @@ void* runParallel(void* arg) {
 	int range = ceil((double)x / (double)NUM_WS);
 	int upBorder = min(range * id, x), downBorder = min(range * (id + 1), x);
 	int down = (id + NUM_WS + 1) % NUM_WS, up = (id + NUM_WS - 1) % NUM_WS;
+	field_t *ptr1, *ptr2;
+	if (whichTable == 0) {
+		ptr1 = &field;
+		ptr2 = &field2;
+	} else {
+		ptr1 = &field2;
+		ptr2 = &field;
+	}
 	for (int it = 0; it < numIterations; ++it) {
-		vector<vector<bool> > bufField = field;
-		vector<vector<bool> > bufWriteField = vector<vector<bool> >(downBorder - upBorder);
-		for (int i = 0; i < downBorder - upBorder; ++i) {
-			bufWriteField[i] = bufField[upBorder + i];
-		}
 		for (int i = upBorder; i < downBorder; ++i) {
 			for (int j = 0; j < y; ++j) {
 				int numNeighbors = 0;
@@ -145,124 +141,75 @@ void* runParallel(void* arg) {
 				int lower = (i + x + 1) % x;
 				int left = (j + y - 1) % y;
 				int right = (j + y + 1) % y;
-				if (bufField[upper][j]) {
+				if ((*ptr1)[upper][j]) {
 					numNeighbors++;
 				}
-				if (bufField[upper][left]) {
+				if ((*ptr1)[upper][left]) {
 					numNeighbors++;
 				}
-				if (bufField[upper][right]) {
+				if ((*ptr1)[upper][right]) {
 					numNeighbors++;
 				}
-				if (bufField[lower][j]) {
+				if ((*ptr1)[lower][j]) {
 					numNeighbors++;
 				}
-				if (bufField[lower][left]) {
+				if ((*ptr1)[lower][left]) {
 					numNeighbors++;
 				}
-				if (bufField[lower][right]) {
+				if ((*ptr1)[lower][right]) {
 					numNeighbors++;
 				}
-				if (bufField[i][left]) {
+				if ((*ptr1)[i][left]) {
 					numNeighbors++;
 				}
-				if (bufField[i][right]) {
+				if ((*ptr1)[i][right]) {
 					numNeighbors++;
 				}
-				if (!bufField[i][j] && numNeighbors == 3) {
-					bufWriteField[i - upBorder][j] = true;
-				}
-				if (bufField[i][j] && (numNeighbors < 2 || numNeighbors > 3)) {
-					bufWriteField[i - upBorder][j] = false;
+				if (!(*ptr1)[i][j] && numNeighbors == 3) {
+					(*ptr2)[i][j] = true;
+				} else if ((*ptr1)[i][j] && (numNeighbors < 2 || numNeighbors > 3)) {
+					(*ptr2)[i][j] = false;
+				} else {
+					(*ptr2)[i][j] = (*ptr1)[i][j];
 				}
 			}
 		}
-		pthread_mutex_lock(&mutexCV[id]);
-		isFinishedReadingUp[id] = true;
-		isFinishedReadingDown[id] = true;
-		pthread_cond_broadcast(&isFinishedReadingCV[id]);
-		pthread_mutex_unlock(&mutexCV[id]);
-
-		pthread_mutex_lock(&mutexCV[down]);
-		while(!isFinishedReadingUp[down]) {
-			pthread_cond_wait(&isFinishedReadingCV[down], &mutexCV[down]);
-		}
-		isFinishedReadingUp[down] = false;
-		pthread_mutex_unlock(&mutexCV[down]);
-
-		pthread_mutex_lock(&mutexCV[up]);
-		while(!isFinishedReadingDown[up]) {
-			pthread_cond_wait(&isFinishedReadingCV[up], &mutexCV[up]);
-		}
-		isFinishedReadingDown[up] = false;
-		pthread_mutex_unlock(&mutexCV[up]);
-
-		for (int i = upBorder; i < downBorder; ++i) {
-			field[i] = bufWriteField[i - upBorder];
-		}
-
-		pthread_mutex_lock(&mutexCV[id]);
-		isFinishedWritingToUp[id] = true;
-		isFinishedWritingToDown[id] = true;
-		pthread_cond_broadcast(&isFinishedReadingCV[id]);
-		pthread_mutex_unlock(&mutexCV[id]);
-
-		pthread_mutex_lock(&mutexCV[down]);
-		while(!isFinishedWritingToUp[down]) {
-			pthread_cond_wait(&isFinishedReadingCV[down], &mutexCV[down]);
-		}
-		isFinishedWritingToUp[down] = false;
-		pthread_mutex_unlock(&mutexCV[down]);
-
-		pthread_mutex_lock(&mutexCV[up]);
-		while(!isFinishedWritingToDown[up]) {
-			pthread_cond_wait(&isFinishedReadingCV[up], &mutexCV[up]);
-		}
-		isFinishedWritingToDown[up] = false;
-		pthread_mutex_unlock(&mutexCV[up]);
-
-		//Проверяем, не остановил ли нас master
-		/*int lockStatus;
-		lockStatus = sem_wait(&iterationSems[id]);
+		swap(ptr1, ptr2);
+		int lockStatus = sem_trywait(&iterationSem);
 		if (lockStatus != 0) {
-			printf("Pid: %d - sem_wait failed\n", id);
-			return NULL;
+			pthread_mutex_lock(&mutexCV);
+			sem_init(&iterationSem, 0, NUM_WS - 1);
+			for (int i = 0; i < NUM_WS; ++i) {
+				isReady[i] = true;
+			}
+			pthread_cond_broadcast(&iterationCV);
+			pthread_mutex_unlock(&mutexCV);
 		}
-		lockStatus = sem_post(&iterationSems[id]);
-		if (lockStatus != 0) {
-			printf("Pid: %d - sem_post failed\n", id);
-			return NULL;
+		pthread_mutex_lock(&mutexCV);
+		while (!isReady[id]) {
+			pthread_cond_wait(&iterationCV, &mutexCV);
 		}
-		pthread_mutex_lock(&gameFinishedMutex);
+		isReady[id] = false;
+		pthread_mutex_unlock(&mutexCV);
+
 		if (gameFinished) {
 			if (id == 0) {
 				stoppedIteration += it;
+				whichTable = (whichTable + it) % 2;
 				printf("Stopped at iteration #%d\n", stoppedIteration);
 			}
-			isFinishedReadingUp[id] = true;
-			isFinishedReadingDown[id] = true;
-			isFinishedWritingToUp[down] = true;
-			isFinishedWritingToDown[up] = true;
-			pthread_mutex_unlock(&gameFinishedMutex);
-			lockStatus = sem_post(&iterationSems[id]);
 			return NULL;
 		}
-		pthread_mutex_unlock(&gameFinishedMutex);*/
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
+		whichTable = (whichTable + numIterations) % 2;
 	}
 	return NULL;
 }
 
 void stopCommand() {
-	/*for (int i = 0; i < NUM_WS; ++i) {
-		sem_wait(&iterationSems[i]);
-	}
 	gameFinished = true;
-	for (int i = 0; i < NUM_WS; ++i) {
-		sem_post(&iterationSems[i]);
-	}*/
 	for (int i = 0; i < NUM_WS; ++i) {
 		pthread_join(threads[i], NULL);
 	}
@@ -271,9 +218,10 @@ void stopCommand() {
 
 void quitCommand() {
 	for (int i = 0; i < NUM_WS; ++i) {
-		sem_destroy(&iterationSems[i]);
-		pthread_mutex_destroy(&mutexCV[i]);
+		delete myArgs[i];
 	}
+	pthread_mutex_destroy(&mutexCV);
+	sem_destroy(&iterationSem);
 }
 
 int main() {
@@ -337,6 +285,8 @@ int main() {
 			for (int i = 0; i < NUM_WS; ++i) {
 				myArgs[i] = new args_t(numIterations,i);
 			}
+			sem_init(&iterationSem, 0, NUM_WS - 1);
+			isReady.resize(NUM_WS, false);
 			gameFinished = false;
 			state = state_t::RUNNING;
 			for (int i = 0; i < NUM_WS; ++i) {
@@ -357,6 +307,8 @@ int main() {
 			for (int i = 0; i < NUM_WS; ++i) {
 				myArgs[i] = new args_t(numIterations,i);
 			}
+			sem_init(&iterationSem, 0, NUM_WS - 1);
+			isReady.resize(NUM_WS, false);
 			gameFinished = false;
 			state = state_t::RUNNING;
 			time_t startTimer;
