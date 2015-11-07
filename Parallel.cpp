@@ -37,7 +37,7 @@ vector<args_t*> myArgs; 			//Аргументы для потока
 vector<bool> isReady;					
 unsigned int stoppedIteration; 			//Текущая итерация
 bool gameFinished; 				//Остановлена ли игра
-int whichTable = 0;				//Какую таблицу использовать для чтения
+int whichTable;				//Какую таблицу использовать для чтения
 sem_t iterationSem;				
 mutex_t mutexCV;
 cond_t iterationCV;
@@ -50,6 +50,9 @@ void initializeStructures() {
 	isReady.resize(NUM_WS, false);
 	stoppedIteration = 0;
 	gameFinished = false;
+	whichTable = 0;
+	mutexCV = PTHREAD_MUTEX_INITIALIZER;
+	iterationCV = PTHREAD_COND_INITIALIZER;
 }
 
 int startCommand(const string &filePath) {
@@ -185,12 +188,6 @@ void* runParallel(void* arg) {
 			pthread_cond_broadcast(&iterationCV);
 			pthread_mutex_unlock(&mutexCV);
 		}
-		pthread_mutex_lock(&mutexCV);
-		while (!isReady[id]) {
-			pthread_cond_wait(&iterationCV, &mutexCV);
-		}
-		isReady[id] = false;
-		pthread_mutex_unlock(&mutexCV);
 
 		if (gameFinished) {
 			if (id == 0) {
@@ -200,6 +197,13 @@ void* runParallel(void* arg) {
 			}
 			return NULL;
 		}
+		
+		pthread_mutex_lock(&mutexCV);
+		while (!isReady[id]) {
+			pthread_cond_wait(&iterationCV, &mutexCV);
+		}
+		isReady[id] = false;
+		pthread_mutex_unlock(&mutexCV);
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
