@@ -180,21 +180,21 @@ void* runParallel(void* arg) {
 		swap(ptr1, ptr2);
 		int lockStatus = sem_trywait(&iterationSem);
 		if (lockStatus != 0) {
+			if (gameFinished) {
+				stoppedIteration += it;
+				whichTable = (whichTable + it) % 2;
+				printf("Stopped at iteration #%d\n", stoppedIteration);
+			}
 			pthread_mutex_lock(&mutexCV);
 			sem_init(&iterationSem, 0, NUM_WS - 1);
 			for (int i = 0; i < NUM_WS; ++i) {
 				isReady[i] = true;
 			}
-			pthread_cond_broadcast(&iterationCV);
+			pthread_cond_broadcast(&iterationCV);		
 			pthread_mutex_unlock(&mutexCV);
 		}
 
 		if (gameFinished) {
-			if (id == 0) {
-				stoppedIteration += it;
-				whichTable = (whichTable + it) % 2;
-				printf("Stopped at iteration #%d\n", stoppedIteration);
-			}
 			return NULL;
 		}
 		
