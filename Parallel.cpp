@@ -193,10 +193,6 @@ void* runParallel(void* arg) {
 			pthread_cond_broadcast(&iterationCV);		
 			pthread_mutex_unlock(&mutexCV);
 		}
-
-		if (gameFinished) {
-			return NULL;
-		}
 		
 		pthread_mutex_lock(&mutexCV);
 		while (!isReady[id]) {
@@ -204,6 +200,10 @@ void* runParallel(void* arg) {
 		}
 		isReady[id] = false;
 		pthread_mutex_unlock(&mutexCV);
+
+		if (gameFinished) {
+			return NULL;
+		}
 	}
 	if (id == 0) {
 		stoppedIteration += numIterations;
