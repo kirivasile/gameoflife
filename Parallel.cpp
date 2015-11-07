@@ -37,6 +37,7 @@ vector<args_t*> myArgs; 			//Аргументы для потока
 vector<bool> isReady;					
 unsigned int stoppedIteration; 			//Текущая итерация
 bool gameFinished; 				//Остановлена ли игра
+bool stopped;
 int whichTable;				//Какую таблицу использовать для чтения
 sem_t iterationSem;				
 mutex_t mutexCV;
@@ -184,6 +185,7 @@ void* runParallel(void* arg) {
 				stoppedIteration += it;
 				whichTable = (whichTable + it) % 2;
 				printf("Stopped at iteration #%d\n", stoppedIteration);
+				stopped = true;
 			}
 			pthread_mutex_lock(&mutexCV);
 			sem_init(&iterationSem, 0, NUM_WS - 1);
@@ -201,7 +203,7 @@ void* runParallel(void* arg) {
 		isReady[id] = false;
 		pthread_mutex_unlock(&mutexCV);
 
-		if (gameFinished) {
+		if (stopped && gameFinished) {
 			return NULL;
 		}
 	}
@@ -292,6 +294,7 @@ int main() {
 			sem_init(&iterationSem, 0, NUM_WS - 1);
 			isReady.resize(NUM_WS, false);
 			gameFinished = false;
+			stopped = false;
 			state = state_t::RUNNING;
 			for (int i = 0; i < NUM_WS; ++i) {
 				pthread_create(&threads[i], NULL, runParallel, myArgs[i]);
@@ -314,6 +317,7 @@ int main() {
 			sem_init(&iterationSem, 0, NUM_WS - 1);
 			isReady.resize(NUM_WS, false);
 			gameFinished = false;
+			stopped = false;
 			state = state_t::RUNNING;
 			time_t startTimer;
 			time_t endTimer;
