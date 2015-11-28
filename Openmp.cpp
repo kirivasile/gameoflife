@@ -11,9 +11,6 @@
 
 using namespace std;
 
-
-typedef pthread_cond_t cond_t;
-typedef pthread_mutex_t mutex_t;
 typedef vector<vector<bool> > field_t;
 
 struct args_t {
@@ -33,30 +30,19 @@ enum state_t {
 field_t field, field2;					//Поле
 state_t state = state_t::BEFORE_START; 		//Состояние, в котором находится сейчас программа
 unsigned int NUM_WS;				//Число потоков
-vector<pthread_t> threads; 			//Рабочие
-vector<args_t*> myArgs; 			//Аргументы для потока
-vector<bool> isReady;					
 unsigned int stoppedIteration; 			//Текущая итерация
 bool gameFinished; 				//Остановлена ли игра
 bool stopped;
 int whichTable;				//Какую таблицу использовать для чтения
-sem_t iterationSem;				
-mutex_t mutexCV;
-cond_t iterationCV;
-
-bool noErrors = false;
+bool noErrors;				//Если при вводе данных при команде START не было ошибок
 int numIterations;
 
 void initializeStructures() {
-	threads.resize(NUM_WS);
-	myArgs.resize(NUM_WS);
 	state = state_t::STARTED;
-	isReady.resize(NUM_WS, false);
 	stoppedIteration = 0;
 	gameFinished = false;
 	whichTable = 0;
-	mutexCV = PTHREAD_MUTEX_INITIALIZER;
-	iterationCV = PTHREAD_COND_INITIALIZER;
+	noErrors = false;
 }
 
 int startCommand(const string &filePath) {
@@ -120,11 +106,7 @@ void statusCommand() {
 }
 
 void runParallel(int numIterations) {
-	//args_t* arg_str = (args_t*)arg;
-	//int numIterations = arg_str->numIterations;
-	//int id = arg_str->pid;
 	int id = omp_get_thread_num();
-	printf("Thread %d started\n", id);
 	int x = field.size();
 	if (x < 1) {
 		printf("Pid: %d - Error in taking number of rows\n", id);
@@ -183,30 +165,15 @@ void runParallel(int numIterations) {
 			}
 		}
 		swap(ptr1, ptr2);
-		int lockStatus = sem_trywait(&iterationSem);
-		if (lockStatus != 0) {
+		#pragma omp single
+		{
 			if (gameFinished) {
 				stoppedIteration += it;
 				whichTable = (whichTable + it) % 2;
 				printf("Stopped at iteration #%d\n", stoppedIteration);
 				stopped = true;
 			}
-			pthread_mutex_lock(&mutexCV);
-			sem_init(&iterationSem, 0, NUM_WS - 1);
-			for (int i = 0; i < NUM_WS; ++i) {
-				isReady[i] = true;
-			}
-			pthread_cond_broadcast(&iterationCV);		
-			pthread_mutex_unlock(&mutexCV);
 		}
-		
-		pthread_mutex_lock(&mutexCV);
-		while (!isReady[id]) {
-			pthread_cond_wait(&iterationCV, &mutexCV);
-		}
-		isReady[id] = false;
-		pthread_mutex_unlock(&mutexCV);
-
 		if (stopped && gameFinished) {
 			return;
 		}
@@ -220,18 +187,7 @@ void runParallel(int numIterations) {
 
 void stopCommand() {
 	gameFinished = true;
-	/*for (int i = 0; i < NUM_WS; ++i) {
-		pthread_join(threads[i], NULL);
-	}*/
 	state = state_t::STARTED;
-}
-
-void quitCommand() {
-	/*for (int i = 0; i < NUM_WS; ++i) {
-		delete myArgs[i];
-	}*/
-	pthread_mutex_destroy(&mutexCV);
-	sem_destroy(&iterationSem);
 }
 
 int main() {
@@ -300,21 +256,12 @@ int main() {
 					} else if (state == state_t::BEFORE_START) {
 						cout << "The system didn't start, please use the command START\n";
 					} else {
-						//for (int i = 0; i < NUM_WS; ++i) {
-						//	myArgs[i] = new args_t(numIterations,i);
-						//}
-						sem_init(&iterationSem, 0, NUM_WS - 1);
-						isReady.resize(NUM_WS, false);
 						gameFinished = false;
 						stopped = false;
 						state = state_t::RUNNING;
 						noErrors = true;
 					}
-					//for (int i = 0; i < NUM_WS; ++i) {
-						//pthread_create(&threads[i], NULL, runParallel, myArgs[i]);
-					//}
 				}
-				//printf("%d\n", omp_get_thread_num());
 				#pragma omp barrier
 				if (noErrors) {
 					omp_set_nested(1);
@@ -337,23 +284,12 @@ int main() {
 					} else if (state == state_t::BEFORE_START) {
 						cout << "The system didn't start, please use the command START\n";
 					} else {
-						for (int i = 0; i < NUM_WS; ++i) {
-							myArgs[i] = new args_t(numIterations,i);
-						}
-						sem_init(&iterationSem, 0, NUM_WS - 1);
-						isReady.resize(NUM_WS, false);
 						gameFinished = false;
 						stopped = false;
 						state = state_t::RUNNING;
 						time_t startTimer;
 						time_t endTimer;
 						time(&startTimer);
-						/*for (int i = 0; i < NUM_WS; ++i) {
-							pthread_create(&threads[i], NULL, runParallel, myArgs[i]);
-						}
-						for (int i = 0; i < NUM_WS; ++i) {
-							pthread_join(threads[i], NULL);
-						}*/
 						omp_set_nested(1);
 						#pragma omp parallel num_threads(NUM_WS)
 						{
@@ -390,10 +326,6 @@ int main() {
 				}
 			}
 			else if (command == "QUIT") {
-				#pragma omp master 
-				{
-					quitCommand();
-				}
 				break;
 			}
 			else if (command == "HELP") {
