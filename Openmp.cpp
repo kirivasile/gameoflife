@@ -1,4 +1,4 @@
-#include <iostream>
+c#include <iostream>
 #include <vector>
 #include <fstream>
 #include <string>
@@ -255,6 +255,8 @@ int main() {
 						cout << "Please, enter positive number of iterations\n";
 					} else if (state == state_t::BEFORE_START) {
 						cout << "The system didn't start, please use the command START\n";
+					} else if (state == state_t::RUNNING) {
+						cout << "The system is already running, please use the command STOP\n";
 					} else {
 						gameFinished = false;
 						stopped = false;
@@ -271,7 +273,7 @@ int main() {
 						{
 							runParallel(numIterations);
 						}
-
+						noErrors = false;
 					}
 				}
 			}
@@ -283,6 +285,8 @@ int main() {
 						cout << "Please, enter positive number of iterations\n";
 					} else if (state == state_t::BEFORE_START) {
 						cout << "The system didn't start, please use the command START\n";
+					} else if (state == state_t::RUNNING) {
+						cout << "The system is already running, please use the command STOP\n";
 					} else {
 						gameFinished = false;
 						stopped = false;
