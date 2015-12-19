@@ -1,19 +1,23 @@
 #include "master.h"
 
-field_t field;
+using namespace std;
 
-void startCommand(const string &field) {
+vector<vector<bool> > field;
+state_t state = BEFORE_START;
+
+void startCommand(const string &fieldString) {
 	vector<bool> buf;
-	for (int i = 0; i < field.size(); ++i) {
-		if (buf[i] == '.') {
+	for (int i = 0; i < fieldString.size(); ++i) {
+		if (fieldString[i] == '.') {
 			field.push_back(buf);
 			buf.clear();
-		} else if (buf[i] == '1') {
+		} else if (fieldString[i] == '1') {
 			buf.push_back(true);
-		} else if (buf[i] == '0') {
+		} else if (fieldString[i] == '0') {
 			buf.push_back(false);
 		}
 	}
+	state = STARTED;
 }
 
 void statusCommand() {
@@ -31,9 +35,9 @@ void statusCommand() {
 	}
 }
 
-void masterRoutine(size) {
+void masterRoutine(int size) {
 	string command;
-	while(true) {
+	for (int i = 0; i < 2; ++i) {		
 		cin >> command;
 		if (command == "START") {
 			string fieldString;

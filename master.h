@@ -1,5 +1,11 @@
 #pragma once
 
-typedef vector<vector<bool> > field_t;
+#include "dependencies.h"
 
-void masterRoutine(size);
+enum state_t {
+	BEFORE_START,
+	STARTED,
+	RUNNING
+};
+
+void masterRoutine(int size);
