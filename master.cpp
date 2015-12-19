@@ -37,10 +37,10 @@ void statusCommand() {
 
 void runCommand(int numIterations, int numWorkers) {
 	//Отправляем размер массива
-	int *height = new int[1];
-	height[0] = field.size();
+	int height = field.size();
 	for (int i = 1; i < numWorkers + 1; ++i) {
-		MPI_Send(height, 1, MPI_INT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
+		MPI_Send(&height, 1, MPI_INT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
+		MPI_Send(&numIterations, 1, MPI_INT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
 	}  	
 	int dataSize = field.size() * field.size();
 	unsigned short int *data = new unsigned short int[dataSize];
@@ -92,6 +92,8 @@ void masterRoutine(int size) {
 				continue;
 			}
 			runCommand(numIterations, size - 1);
+		} else if (command == "QUIT") {
+			break;
 		} else {
 			cout << "Wrong command. Type HELP for the list\n";
 		}
