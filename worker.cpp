@@ -50,14 +50,9 @@ void workerRoutine(int id, int numWorkers) {
 		unsigned short int *dataForUp, *dataForDown;
 		dataForUp = new unsigned short int[fieldSize];
 		dataForDown = new unsigned short int[fieldSize];
-		int rowForUp = upBorder == 0 ? fieldSize - 1 : upBorder - 1;
-		int rowForDown = downBorder == fieldSize ? 0 : downBorder;
-		if (it == 0) {
-		//printf("Worker %d, rowForUp %d, rowForDown %d\n", id, rowForUp, rowForDown);
-		}
 		for (int i = 0; i < fieldSize; ++i) {
-			dataForUp[i] = writeField[rowForUp][i];
-			dataForDown[i] = writeField[rowForDown][i];
+			dataForUp[i] = writeField[upBorder][i];
+			dataForDown[i] = writeField[downBorder - 1][i];
 		}
 		if (up != id) {
 			MPI_Send(dataForUp, fieldSize, MPI_UNSIGNED_SHORT, up, messageType::DOWN_DATA, MPI_COMM_WORLD);
@@ -71,25 +66,19 @@ void workerRoutine(int id, int numWorkers) {
 		if (down != id) {
                         MPI_Recv(dataForDown, fieldSize, MPI_UNSIGNED_SHORT, down, messageType::DOWN_DATA, MPI_COMM_WORLD, &status);
                 }
+		int upMessageRow = upBorder == 0 ? fieldSize - 1 : upBorder - 1;
+		int downMessageRow = downBorder == fieldSize ? 0 : downBorder;
 		for (int i = 0; i < fieldSize; ++i) {
-			writeField[rowForUp][i] = dataForUp[i];
-			writeField[rowForDown][i] = dataForDown[i];
+			writeField[upMessageRow][i] = dataForUp[i];
+			writeField[downMessageRow][i] = dataForDown[i];
 		}
-		field = writeField;
-		cout << "Worker: " << id << " iteration: " << it << "\n";
-		for (int i = upBorder; i < downBorder; ++i) {
-			for (int j = 0; j < fieldSize; ++j) {
-				cout << field[i][j] << " ";
-			}
-			cout << "\n\n";
-		} 			
+		field = writeField; 			
 	}
-	/*cout << "Worker #" << rank << "\n";
-	for (int i = 0; i < fieldSize; ++i) {
-		for (int j = 0; j < fieldSize; ++j) {
-			cout << (field[i][j] == true ? 1 : 0) << " ";
-		}
-		cout << "\n";
-	}*/
+	for (int i = upBorder; i < downBorder; ++i) {
+                for (int j = 0; j < fieldSize; ++j) {
+                	cout << field[i][j] << " ";
+                }
+       		cout << "\n\n";
+        }
 	
 }
