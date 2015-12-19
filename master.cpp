@@ -35,9 +35,28 @@ void statusCommand() {
 	}
 }
 
+void runCommand(int numIterations, int numWorkers) {
+	//Отправляем размер массива
+	int *height = new int[1];
+	height[0] = field.size();
+	for (int i = 1; i < numWorkers + 1; ++i) {
+		MPI_Send(height, 1, MPI_INT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
+	}  	
+	int dataSize = field.size() * field.size();
+	unsigned short int *data = new unsigned short int[dataSize];
+	for (int i = 0; i < field.size(); ++i) {
+		for (int j = 0; j < field[i].size(); ++j) {
+			data[i * field.size() + j] = field[i][j];
+		}
+	}
+	for (int i = 1; i < numWorkers + 1; ++i) {
+		MPI_Send(data, dataSize, MPI_UNSIGNED_SHORT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);		
+	}
+}
+
 void masterRoutine(int size) {
 	string command;
-	for (int i = 0; i < 2; ++i) {		
+	while(true) {		
 		cin >> command;
 		if (command == "START") {
 			string fieldString;
@@ -47,8 +66,7 @@ void masterRoutine(int size) {
 				continue;
 			}
 			startCommand(fieldString);
-		}
-		else if (command == "STATUS") {
+		} else if (command == "STATUS") {
 			if (state == state_t::BEFORE_START) {
 				cout << "The system hasn't started, please use the command START\n";
 				continue;
@@ -58,6 +76,22 @@ void masterRoutine(int size) {
 				continue;
 			}
 			statusCommand();
+		} else if (command == "RUN") {
+			int numIterations;
+			cin >> numIterations;
+			if (numIterations < 1) {
+				cout << "Please enter the positive number of iterations\n";
+				continue;			
+			}
+			if (state == state_t::BEFORE_START) {
+				cout << "The system isn't started\n";
+				continue;
+			}
+			if (state == state_t::RUNNING) {
+				cout << "The system is running\n";
+				continue;
+			}
+			runCommand(numIterations, size - 1);
 		} else {
 			cout << "Wrong command. Type HELP for the list\n";
 		}
