@@ -74,11 +74,23 @@ void workerRoutine(int id, int numWorkers) {
 		}
 		field = writeField; 			
 	}
+	//Пошлём мастеру наши границы
+	int borders[2];
+	borders[0] = upBorder;
+	borders[1] = downBorder;
+	MPI_Send(borders, 2, MPI_INT, 0, messageType::FINISH_BORDERS, MPI_COMM_WORLD);
+	unsigned short int *dataForMaster = new unsigned short int[fieldSize * (downBorder - upBorder)];
 	for (int i = upBorder; i < downBorder; ++i) {
+		for (int j = 0; j < fieldSize; ++j) {
+			dataForMaster[(i - upBorder) * fieldSize + j] = field[i][j];
+		}
+	}
+	MPI_Send(dataForMaster, fieldSize * (downBorder - upBorder), MPI_UNSIGNED_SHORT, 0, messageType::FINISH_DATA, MPI_COMM_WORLD);
+	/*for (int i = upBorder; i < downBorder; ++i) {
                 for (int j = 0; j < fieldSize; ++j) {
                 	cout << field[i][j] << " ";
                 }
        		cout << "\n\n";
-        }
+        }*/
 	
 }

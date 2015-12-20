@@ -52,6 +52,19 @@ void runCommand(int numIterations, int numWorkers) {
 	for (int i = 1; i < numWorkers + 1; ++i) {
 		MPI_Send(data, dataSize, MPI_UNSIGNED_SHORT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);		
 	}
+	MPI_Status status;
+	for (int i = 1; i < numWorkers + 1; ++i) {
+		int borders[2];
+		MPI_Recv(borders, 2, MPI_INT, i, messageType::FINISH_BORDERS, MPI_COMM_WORLD, &status);
+		MPI_Recv(data + (borders[0] * height), (borders[1] - borders[0]) * height, MPI_INT, i, messageType::FINISH_DATA, MPI_COMM_WORLD, &status);
+		for (int j = borders[0]; j < borders[1]; ++j) {
+			for (int k = 0; k < height; ++k) {
+				field[j][k] = data[borders[0] * height + (j - borders[0]) * height + k];
+			}
+		}
+	}
+	delete[] data;
+	state = state_t::STARTED;
 }
 
 void masterRoutine(int size) {
