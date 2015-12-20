@@ -1,9 +1,12 @@
 #include "master.h"
+#include <unistd.h>
+#include <ctime>
 
 using namespace std;
 
 vector<vector<bool> > field;
 state_t state = BEFORE_START;
+int numWorkers = 0;
 
 void startCommand(const string &fieldString) {
 	vector<bool> buf;
@@ -18,6 +21,17 @@ void startCommand(const string &fieldString) {
 		}
 	}
 	state = STARTED;
+}
+
+void randomCommand(int x, int y) {
+	srand(time(NULL));
+	field = vector<vector<bool> >(x, vector<bool>(y));
+	for (int i = 0; i < x; ++i) {
+		for (int j = 0; j < y; ++j) {
+			field[i][j] = rand() % 2;
+		}
+	}
+	state = STARTED;	
 }
 
 void statusCommand() {
@@ -35,8 +49,9 @@ void statusCommand() {
 	}
 }
 
-void runCommand(int numIterations, int numWorkers) {
+void runCommand(int numIterations) {
 	//Отправляем размер массива
+	state = state_t::RUNNING;
 	int height = field.size();
 	for (int i = 1; i < numWorkers + 1; ++i) {
 		MPI_Send(&height, 1, MPI_INT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
@@ -52,23 +67,34 @@ void runCommand(int numIterations, int numWorkers) {
 	for (int i = 1; i < numWorkers + 1; ++i) {
 		MPI_Send(data, dataSize, MPI_UNSIGNED_SHORT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);		
 	}
+	//Искуственная задержка
+	sleep(1);
+}
+
+void stopCommand() {
+	int height = field.size();
+	int dataSize = height * height;
+        unsigned short int *data = new unsigned short int[dataSize];
+	int stop = 1;
+	MPI_Send(&stop, 1, MPI_INT, 1, messageType::STOP_SGN, MPI_COMM_WORLD);
 	MPI_Status status;
-	for (int i = 1; i < numWorkers + 1; ++i) {
-		int borders[2];
-		MPI_Recv(borders, 2, MPI_INT, i, messageType::FINISH_BORDERS, MPI_COMM_WORLD, &status);
-		MPI_Recv(data + (borders[0] * height), (borders[1] - borders[0]) * height, MPI_INT, i, messageType::FINISH_DATA, MPI_COMM_WORLD, &status);
-		for (int j = borders[0]; j < borders[1]; ++j) {
-			for (int k = 0; k < height; ++k) {
-				field[j][k] = data[borders[0] * height + (j - borders[0]) * height + k];
-			}
-		}
-	}
-	delete[] data;
-	state = state_t::STARTED;
+        for (int i = 1; i < numWorkers + 1; ++i) {
+                int borders[2];
+                MPI_Recv(borders, 2, MPI_INT, i, messageType::FINISH_BORDERS, MPI_COMM_WORLD, &status);
+                MPI_Recv(data + (borders[0] * height), (borders[1] - borders[0]) * height, MPI_INT, i, messageType::FINISH_DATA, MPI_COMM_WORLD, &status);
+                for (int j = borders[0]; j < borders[1]; ++j) {
+                        for (int k = 0; k < height; ++k) {
+                                field[j][k] = data[borders[0] * height + (j - borders[0]) * height + k];
+                        }
+                }
+        }
+        delete[] data;
+        state = state_t::STARTED;	
 }
 
 void masterRoutine(int size) {
 	string command;
+	numWorkers = size - 1;
 	while(true) {		
 		cin >> command;
 		if (command == "START") {
@@ -79,6 +105,14 @@ void masterRoutine(int size) {
 				continue;
 			}
 			startCommand(fieldString);
+		} else if (command == "RANDOM") {
+			int x, y;
+			cin >> x >> y;
+			if (state != state_t::BEFORE_START) {
+				cout << "The system has already started\n";
+				continue;
+			}
+			randomCommand(x,y);
 		} else if (command == "STATUS") {
 			if (state == state_t::BEFORE_START) {
 				cout << "The system hasn't started, please use the command START\n";
@@ -104,7 +138,13 @@ void masterRoutine(int size) {
 				cout << "The system is running\n";
 				continue;
 			}
-			runCommand(numIterations, size - 1);
+			runCommand(numIterations);
+		} else if (command == "STOP") {
+			if (state != state_t::RUNNING) {
+				cout << "The system isn't running\n";
+				continue;
+			}
+			stopCommand();
 		} else if (command == "QUIT") {
 			break;
 		} else {

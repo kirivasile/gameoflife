@@ -19,11 +19,26 @@ void workerRoutine(int id, int numWorkers) {
 	}
 	int range = ceil((double)fieldSize / (double)numWorkers);
         int upBorder = min(range * (id - 1), fieldSize), downBorder = min(range * id, fieldSize);
-        //int down = (id + numWorkers + 1) % numWorkers, up = (id + numWorkers - 1) % numWorkers;
         int down = id == numWorkers ? 1 : id + 1;
 	int up = id == 1 ? numWorkers : id - 1; 
-	//printf("Worker %d, up %d, down %d, upBorder %d, downBorder%d\n", id, up, down, upBorder, downBorder);	
+	int stop = 0;
+	MPI_Request request;
+	if (id == 1) {
+		MPI_Irecv(&stop, 1, MPI_INT, 0, messageType::STOP_SGN, MPI_COMM_WORLD, &request);
+	} else {
+		MPI_Irecv(&numIterations, 1, MPI_INT, 1, messageType::STOP_SGN, MPI_COMM_WORLD, &request);
+	}
 	for (int it = 0; it < numIterations; ++it) {
+		if (id == 1) {
+			if (stop == 1) {
+				int newNumIt = it + numWorkers / 2 + 1;
+				for (int worker = 2; worker < numWorkers + 1; ++worker) {
+					MPI_Ssend(&newNumIt, 1, MPI_INT, worker, messageType::STOP_SGN, MPI_COMM_WORLD);
+				}
+				numIterations = newNumIt;
+				stop = 0;
+			}					
+		}
 		vector<vector<bool> > writeField = field;
 		for (int i = upBorder; i < downBorder; ++i) {
 			for (int j = 0; j < fieldSize; ++j) {
@@ -74,7 +89,8 @@ void workerRoutine(int id, int numWorkers) {
 		}
 		field = writeField; 			
 	}
-	//Пошлём мастеру наши границы
+	//Пошлём мастеру наши границы и данные
+	printf("Worker %d stopped at %d iterations\n", id, numIterations);
 	int borders[2];
 	borders[0] = upBorder;
 	borders[1] = downBorder;
