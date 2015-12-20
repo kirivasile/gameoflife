@@ -71,6 +71,40 @@ void runCommand(int numIterations) {
 	sleep(1);
 }
 
+void timerunCommand(int numIterations) {
+	double startTime = MPI_Wtime();
+	state = state_t::RUNNING;
+        int height = field.size();
+        for (int i = 1; i < numWorkers + 1; ++i) {
+                MPI_Send(&height, 1, MPI_INT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
+                MPI_Send(&numIterations, 1, MPI_INT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
+        }
+        int dataSize = field.size() * field.size();
+        unsigned short int *data = new unsigned short int[dataSize];
+        for (int i = 0; i < field.size(); ++i) {
+                for (int j = 0; j < field[i].size(); ++j) {
+                        data[i * field.size() + j] = field[i][j];
+                }
+        }
+        for (int i = 1; i < numWorkers + 1; ++i) {
+                MPI_Send(data, dataSize, MPI_UNSIGNED_SHORT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
+        }
+	//Получаем данные
+ 	state = state_t::STARTED;
+	for (int i = 1; i < numWorkers + 1; ++i) {
+                int borders[2];
+                MPI_Recv(borders, 2, MPI_INT, i, messageType::FINISH_BORDERS, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                MPI_Recv(data + (borders[0] * height), (borders[1] - borders[0]) * height, MPI_INT, i, messageType::FINISH_DATA, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                for (int j = borders[0]; j < borders[1]; ++j) {
+                        for (int k = 0; k < height; ++k) {
+                                field[j][k] = data[borders[0] * height + (j - borders[0]) * height + k];
+                        }
+                }
+        }
+	double endTime = MPI_Wtime();
+	cout << "Working time: " << endTime - startTime << "\n";       
+}
+
 void stopCommand() {
 	int height = field.size();
 	int dataSize = height * height;
@@ -139,6 +173,22 @@ void masterRoutine(int size) {
 				continue;
 			}
 			runCommand(numIterations);
+		} else if (command == "TIMERUN") {
+			int numIterations;
+                        cin >> numIterations;
+                        if (numIterations < 1) {
+                                cout << "Please enter the positive number of iterations\n";
+                                continue;
+                        }
+                        if (state == state_t::BEFORE_START) {
+                                cout << "The system isn't started\n";
+                                continue;
+                        }
+                        if (state == state_t::RUNNING) {
+                                cout << "The system is running\n";
+                                continue;
+                        }
+                        timerunCommand(numIterations);
 		} else if (command == "STOP") {
 			if (state != state_t::RUNNING) {
 				cout << "The system isn't running\n";
