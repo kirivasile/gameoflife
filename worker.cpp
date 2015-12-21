@@ -4,9 +4,14 @@
 using namespace std;
 
 void workerRoutine(int id, int numWorkers) {
+	while (true) {
 	MPI_Status status;
 	int fieldSize = 0;
 	MPI_Recv(&fieldSize, 1, MPI_INT, 0, messageType::FIELD_DATA, MPI_COMM_WORLD, &status);
+	//QUIT command
+	if (fieldSize == -1) {
+		return;
+	}
 	int numIterations = 0;
 	MPI_Recv(&numIterations, 1, MPI_INT, 0, messageType::FIELD_DATA, MPI_COMM_WORLD, &status);
 	unsigned short int *data = new unsigned short int[fieldSize * fieldSize];
@@ -108,5 +113,5 @@ void workerRoutine(int id, int numWorkers) {
                 }
        		cout << "\n\n";
         }*/
-	
+	}	
 }

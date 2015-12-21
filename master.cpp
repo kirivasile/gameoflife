@@ -126,6 +126,13 @@ void stopCommand() {
         state = state_t::STARTED;	
 }
 
+void quitCommand() {
+	int quit = -1;
+	for (int worker = 1; worker < numWorkers + 1; ++worker) {
+		MPI_Send(&quit, 1, MPI_INT, worker, messageType::FIELD_DATA, MPI_COMM_WORLD);
+	}	
+}
+
 void masterRoutine(int size) {
 	string command;
 	numWorkers = size - 1;
@@ -196,6 +203,7 @@ void masterRoutine(int size) {
 			}
 			stopCommand();
 		} else if (command == "QUIT") {
+			quitCommand();
 			break;
 		} else {
 			cout << "Wrong command. Type HELP for the list\n";
