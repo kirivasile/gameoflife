@@ -3,10 +3,12 @@
 
 using namespace std;
 
-unsigned short int* workerRoutine(int id, int numWorkers, bool& stopped, int sizeFromMaster, int masterNumIt) { //sizeFromMaster = -1 в потоках, кроме мастера
+unsigned short int* workerRoutine(int id, int numWorkers, bool& stopped, int sizeFromMaster, int masterNumIt, int itToStop) { //sizeFromMaster = -1 в потоках, кроме мастера
 	int upBorder = 0, downBorder = 0, sizeForMPI = 0; //для MPI_Gatherv
 	int numIterations, range, down, up, fieldSize;
 	vector<vector<bool> > field;
+	int* stoppedLocal = new int();
+	*stoppedLocal = 0;
 	MPI_Status status;
 	unsigned short int* commitData;
         if (id == 0) {
@@ -90,7 +92,7 @@ unsigned short int* workerRoutine(int id, int numWorkers, bool& stopped, int siz
 		field = writeField;
 		//Коммит
 		}
-		if (it % 2 == 0) {
+		if (it % 2 * (numWorkers + 1) == 0) {
 			if (id == 0) {
 				sizeForMPI = sizeFromMaster;
 			}
@@ -108,7 +110,6 @@ unsigned short int* workerRoutine(int id, int numWorkers, bool& stopped, int siz
 				masDispr[0] = 0;
 				masDispr[1] = 0;
 				masCountr[0] = 0;
-				printf("Id = %d, i=0, dispr = %d, countr = %d\n", id, masDispr[0], masCountr[0]);
 				for (int i = 1; i < numWorkers + 1; ++i) {
 					int rangeMPI = ceil((double)sizeForMPI / (double)numWorkers);
 					if (i != numWorkers) {
@@ -117,46 +118,22 @@ unsigned short int* workerRoutine(int id, int numWorkers, bool& stopped, int siz
 					int upBorderForCount = min(rangeMPI * (i - 1), sizeForMPI);
 					int downBorderForCount = min(rangeMPI * i, sizeForMPI);
 					masCountr[i] = (downBorderForCount - upBorderForCount) * sizeForMPI;
-					if (it != 10) {
-						printf("Id = %d, i=%d, dispr = %d, countr = %d\n", id, i, masDispr[i], masCountr[i]);
-					}
-				}
-				for (int i = 0; i < sizeForMPI * sizeForMPI; ++i) {
-					commitData[i] = 2;
-				}
-			}
-			if (id != 5) {
-				printf("Worker %d sent amount = %d\n", id, sizeForMPI * (downBorder - upBorder));
-				for (int i = 0; i < downBorder - upBorder; ++i) {
-					for (int j = 0; j < sizeForMPI; ++j) {
-						printf("%d ", dataForCommit[i * fieldSize + j]);
-					}
-					printf("\n");
 				}
 			}
 			int amount = sizeForMPI * (downBorder - upBorder);
 			MPI_Gatherv(dataForCommit, amount, MPI_UNSIGNED_SHORT, commitData,
 					masCountr, masDispr, MPI_UNSIGNED_SHORT, 0, MPI_COMM_WORLD);
-			//if (id == 1) {
-			//	MPI_Send(dataForCommit, amount, MPI_UNSIGNED_SHORT, 0, 0, MPI_COMM_WORLD);
-			//}
-			//if (id == 0) {
-			//	MPI_Recv(commitData, sizeForMPI * sizeForMPI, MPI_UNSIGNED_SHORT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			//}
-			if (id == 0) {
-				printf("Master received\n");
-				for (int i = 0; i < sizeForMPI; ++i) {
-					for (int j = 0; j < sizeForMPI; ++j) {
-						printf("%d ", commitData[i * sizeForMPI + j]);
-					}
-					printf("\n");
-				}
+			if (id == 0 && it >= itToStop) {
+				*stoppedLocal = true;
 			}
-			if (id == 0 && stopped) {
-                                return commitData;
-                        }
-			if (id != 0) {
-				break;
+			MPI_Bcast(stoppedLocal, 1, MPI_INT, 0, MPI_COMM_WORLD);
+			if (*stoppedLocal) {
+				if (id == 0) {
+					return commitData;
+				} else {
+					numIterations = it + 1;
+					break;
+				}
 			}
 		} 			
 	}
@@ -174,9 +151,6 @@ unsigned short int* workerRoutine(int id, int numWorkers, bool& stopped, int siz
 		}
 	}
 	MPI_Send(dataForMaster, fieldSize * (downBorder - upBorder), MPI_UNSIGNED_SHORT, 0, messageType::FINISH_DATA, MPI_COMM_WORLD);
-	}
-	if (id == 0) {
-		printf("wrong\n");
 	}
 	return commitData;
 }

@@ -2,12 +2,14 @@
 #include "worker.h"
 #include <unistd.h>
 #include <ctime>
+#include <pthread.h>
 
 using namespace std;
 
 vector<vector<bool> > field;
 state_t state = BEFORE_START;
 int numWorkers = 0;
+bool stopSignal = false;
 
 void startCommand(const string &fieldString) {
 	vector<bool> buf;
@@ -68,17 +70,15 @@ void runCommand(int numIterations) {
 	for (int i = 1; i < numWorkers + 1; ++i) {
 		MPI_Send(data, dataSize, MPI_UNSIGNED_SHORT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);		
 	}
-	//Искуственная задержка
-	//sleep(1);
-	bool stopSignal = true;
-	unsigned short int* result = workerRoutine(0, numWorkers, stopSignal, height, numIterations);
-	/*printf("In master.cpp\n");
+	srand(time(NULL));
+	int itToStop = rand() % numIterations;
+	printf("Demand stop at %d\n", itToStop);
+	unsigned short int* result = workerRoutine(0, numWorkers, stopSignal, height, numIterations, itToStop);
 	for (int i = 0; i < height; ++i) {
 		for (int j = 0; j < height; ++j) {
-			cout << result[i * height + j] << " ";
+			field[i][j] = result[i * height + j] == 1 ? true : false;
 		}
-		cout << endl;
-	}*/	
+	}	
 }
 
 void timerunCommand(int numIterations) {
@@ -99,6 +99,7 @@ void timerunCommand(int numIterations) {
         for (int i = 1; i < numWorkers + 1; ++i) {
                 MPI_Send(data, dataSize, MPI_UNSIGNED_SHORT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);
         }
+        unsigned short int* result = workerRoutine(0, numWorkers, stopSignal, height, numIterations, numIterations);
 	//Получаем данные
  	state = state_t::STARTED;
 	for (int i = 1; i < numWorkers + 1; ++i) {
