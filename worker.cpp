@@ -22,10 +22,21 @@ void workerRoutine(int id, int numWorkers) {
 			field[i][j] = data[i * fieldSize + j] == 1 ? true : false;
 		}
 	}
-	int range = ceil((double)fieldSize / (double)numWorkers);
-        int upBorder = min(range * (id - 1), fieldSize), downBorder = min(range * id, fieldSize);
+	//Очень сложное распределение поля для рабочих
+	int range = floor((double)fieldSize / (double)numWorkers);
+	int diff = max(0, fieldSize  - range * numWorkers);
+	vector<int> upBorders = vector<int>(numWorkers + 1, 0);
+	for (int i = 2; i < numWorkers + 1; ++i) {
+		if (i <= diff + 1) {
+			upBorders[i] = upBorders[i - 1] + range + 1;
+		} else {
+			upBorders[i] = upBorders[i - 1] + range;
+		}
+	}
+	int upBorder = upBorders[id], downBorder = id == numWorkers ? fieldSize : upBorders[id + 1];	
         int down = id == numWorkers ? 1 : id + 1;
 	int up = id == 1 ? numWorkers : id - 1; 
+	//printf("Worker %d, range=%d, upBorder=%d, downBorder=%d,down=%d,up=%d\n",id,range,upBorder,downBorder,down,up);
 	int stop = 0;
 	MPI_Request request;
 	if (id == 1) {
