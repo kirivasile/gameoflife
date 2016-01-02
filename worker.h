@@ -3,4 +3,4 @@
 #include "dependencies.h"
 #include <cmath>
 
-void workerRoutine(int rank, int size);
+unsigned short int* workerRoutine(int rank, int size, bool& stopped, int sizeFromMaster, int masterNumIt);

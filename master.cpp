@@ -1,4 +1,5 @@
 #include "master.h"
+#include "worker.h"
 #include <unistd.h>
 #include <ctime>
 
@@ -68,7 +69,16 @@ void runCommand(int numIterations) {
 		MPI_Send(data, dataSize, MPI_UNSIGNED_SHORT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);		
 	}
 	//Искуственная задержка
-	sleep(1);
+	//sleep(1);
+	bool stopSignal = true;
+	unsigned short int* result = workerRoutine(0, numWorkers, stopSignal, height, numIterations);
+	/*printf("In master.cpp\n");
+	for (int i = 0; i < height; ++i) {
+		for (int j = 0; j < height; ++j) {
+			cout << result[i * height + j] << " ";
+		}
+		cout << endl;
+	}*/	
 }
 
 void timerunCommand(int numIterations) {
@@ -109,9 +119,10 @@ void stopCommand() {
 	int height = field.size();
 	int dataSize = height * height;
         unsigned short int *data = new unsigned short int[dataSize];
-	int stop = 1;
-	MPI_Send(&stop, 1, MPI_INT, 1, messageType::STOP_SGN, MPI_COMM_WORLD);
+	//int stop = 1;
+	//MPI_Send(&stop, 1, MPI_INT, 1, messageType::STOP_SGN, MPI_COMM_WORLD);
 	MPI_Status status;
+	
         for (int i = 1; i < numWorkers + 1; ++i) {
                 int borders[2];
                 MPI_Recv(borders, 2, MPI_INT, i, messageType::FINISH_BORDERS, MPI_COMM_WORLD, &status);
