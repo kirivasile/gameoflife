@@ -18,11 +18,13 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 	//Разделение комунникаторов
+	MPI_Comm workerComm;
+	int color = rank == 0 ? 1 : 2;
+	MPI_Comm_split(MPI_COMM_WORLD, color, rank, &workerComm);
 	if (rank == 0) {
 		masterRoutine(size);
 	} else {
-		bool temp;
-		workerRoutine(rank, size - 1, temp);
+		workerRoutine(rank, size - 1, workerComm);
 	}
 	mpiStatus = MPI_Finalize();
 	if (mpiStatus != MPI_SUCCESS) {
