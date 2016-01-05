@@ -3,7 +3,7 @@
 
 using namespace std;
 
-MPI_Request* req;
+MPI_Request *req, *req2;
 
 void ibcast(int* stopSignal) {
 	req = new MPI_Request();
@@ -35,7 +35,12 @@ unsigned short int* gatherCommit(unsigned short int* data, int count, int id, in
 	return commitData;		
 }
 
-unsigned short int* workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) { //sizeFromMaster = -1 в потоках, кроме мастера
+void workerSync(int& numIterations, MPI_Comm& workerComm) {
+	MPI_Ibcast(&numIterations, 1, MPI_INT, 0, workerComm, req2);	
+}
+
+void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
+	while (true) {
 	int upBorder = 0, downBorder = 0;
 	int numIterations, range, down, up, fieldSize;
 	vector<vector<bool> > field;
@@ -49,7 +54,7 @@ unsigned short int* workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) 
 	MPI_Recv(&fieldSize, 1, MPI_INT, 0, messageType::FIELD_DATA, MPI_COMM_WORLD, &status);
 	//QUIT command
 	if (fieldSize == -1) {
-		return NULL;
+		return;
 	}
 	numIterations = 0;
 	MPI_Recv(&numIterations, 1, MPI_INT, 0, messageType::FIELD_DATA, MPI_COMM_WORLD, &status);
@@ -66,7 +71,15 @@ unsigned short int* workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) 
 	downBorder = min(range * id, fieldSize);
         down = id == numWorkers ? 1 : id + 1;
 	up = id == 1 ? numWorkers : id - 1;
+	if (upBorder - downBorder == 0) {
+		printf("WARNING: worker %d have 0 rows\n", id);
+	}
 	unsigned short int* dataForCommit = new unsigned short int[fieldSize * (downBorder - upBorder)];
+	req2 = new MPI_Request();
+	if (id != 1) {
+		workerSync(numIterations, workerComm);
+	}
+	int mpiTest = 0;
 	for (int it = 0; it < numIterations; ++it) {
 		vector<vector<bool> > writeField = field;
 		for (int i = upBorder; i < downBorder; ++i) {
@@ -117,25 +130,25 @@ unsigned short int* workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) 
 			writeField[downMessageRow][i] = dataForDown[i];
 		}
 		field = writeField;
-		//Проверка на stop
-		int mpiTest = 0;
-		MPI_Test(req, &mpiTest, MPI_STATUS_IGNORE);
+		if (mpiTest != 2) {
+			MPI_Test(req, &mpiTest, MPI_STATUS_IGNORE);
+		}
 		if(mpiTest == 1) {
         	        printf("Worker %d caught stopSignal at %d iteration\n", id, it);
-                	gatherCommit(dataForCommit, (downBorder - upBorder) * fieldSize, id, numWorkers, fieldSize);
-	                return NULL;
+			if (id == 1) {
+				numIterations = it + numWorkers / 2 + 1;
+				workerSync(numIterations, workerComm);
+			}
+			mpiTest = 2;
                 }
-		//Коммит
-		if (it % 100 == 0) {
-			for (int i = upBorder; i < downBorder; ++i) {
-                                for (int j = 0; j < fieldSize; ++j) {
-                                        dataForCommit[(i - upBorder) * fieldSize + j] = field[i][j];
-                                }
-                        }
-			MPI_Barrier(workerComm);
-		}
 	}
-	printf("Worker %d finished work\n", id);
+	printf("Worker %d finished work, numIt=%d\n", id, numIterations);
+	for (int i = upBorder; i < downBorder; ++i) {
+        	for (int j = 0; j < fieldSize; ++j) {
+		        dataForCommit[(i - upBorder) * fieldSize + j] = field[i][j];
+       		}
+        }
 	gatherCommit(dataForCommit, (downBorder - upBorder) * fieldSize, id, numWorkers, fieldSize);
-	return NULL;
+	return ;
+	}
 }

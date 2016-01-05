@@ -3,7 +3,7 @@
 #include "dependencies.h"
 #include <cmath>
 
-unsigned short int* workerRoutine(int rank, int size, MPI_Comm& workerComm);
+void workerRoutine(int rank, int size, MPI_Comm& workerComm);
 
 void ibcast(int* stopSignal);
 
