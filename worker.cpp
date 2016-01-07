@@ -142,12 +142,14 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
 		MPI_Test(req, &mpiTest, MPI_STATUS_IGNORE);
 		if(mpiTest == 1) {
         	        printf("Worker %d caught stopSignal at %d iteration\n", id, it);
-			if (up != id) {
-                        	MPI_Send(dataForUp, fieldSize, MPI_UNSIGNED_SHORT, up, messageType::DOWN_DATA, MPI_COMM_WORLD);
-                	}
-			if (down != id) {
-                        	MPI_Send(dataForDown, fieldSize, MPI_UNSIGNED_SHORT, down, messageType::UP_DATA, MPI_COMM_WORLD);
-                	}
+			for (int i = 0; i < numWorkers / 2 + 1; ++i) {
+				if (up != id) {
+        	                	MPI_Send(dataForUp, fieldSize, MPI_UNSIGNED_SHORT, up, messageType::DOWN_DATA, MPI_COMM_WORLD);
+                		}
+				if (down != id) {
+        	                	MPI_Send(dataForDown, fieldSize, MPI_UNSIGNED_SHORT, down, messageType::UP_DATA, MPI_COMM_WORLD);
+        	        	}
+			}
 			if (id == 1) {
 				int commitIt = (it / (numIterations / 20)) * numIterations / 20;
 				printf("Master receiveng commit #%d\n", commitIt);
