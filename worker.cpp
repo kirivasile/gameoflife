@@ -87,6 +87,7 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
         down = id == numWorkers ? 1 : id + 1;
 	up = id == 1 ? numWorkers : id - 1;
 	unsigned short int* dataForCommit = new unsigned short int[fieldSize * (downBorder - upBorder)];
+	int mpiTest = 0;
 	for (int it = 0; it < numIterations; ++it) {
 		vector<vector<bool> > writeField = field;
 		for (int i = upBorder; i < downBorder; ++i) {
@@ -138,36 +139,23 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
 		}
 		field = writeField;
 		//Проверка на stop
-		int mpiTest = 0;
-		MPI_Test(req, &mpiTest, MPI_STATUS_IGNORE);
+		if (mpiTest != 2) {
+			MPI_Test(req, &mpiTest, MPI_STATUS_IGNORE);
+		}
 		if(mpiTest == 1) {
-        	        printf("Worker %d caught stopSignal at %d iteration\n", id, it);
-			for (int i = 0; i < numWorkers / 2 + 1; ++i) {
-				if (up != id) {
-        	                	MPI_Send(dataForUp, fieldSize, MPI_UNSIGNED_SHORT, up, messageType::DOWN_DATA, MPI_COMM_WORLD);
-                		}
-				if (down != id) {
-        	                	MPI_Send(dataForDown, fieldSize, MPI_UNSIGNED_SHORT, down, messageType::UP_DATA, MPI_COMM_WORLD);
-        	        	}
-			}
-			if (id == 1) {
-				int commitIt = (it / (numIterations / 20)) * numIterations / 20;
-				printf("Master receiveng commit #%d\n", commitIt);
-			}
-                	gatherCommit(dataForCommit, (downBorder - upBorder) * fieldSize, id, numWorkers, fieldSize);
-	                return;
+			numIterations = min(numIterations, (it / (numIterations /20) + 1) * numIterations / 20);
+			printf("Worker %d caught stopSignal at %d iteration, continue work to %d\n", id, it, numIterations);
+			mpiTest = 2;
                 }
-		//Коммит
 		if (it % (numIterations / 20) == 0) {
-			for (int i = upBorder; i < downBorder; ++i) {
-                                for (int j = 0; j < fieldSize; ++j) {
-                                        dataForCommit[(i - upBorder) * fieldSize + j] = field[i][j];
-                                }
-                        }
 			MPI_Barrier(workerComm);
 		}
 	}
-	printf("Worker %d finished work\n", id);
+	for (int i = upBorder; i < downBorder; ++i) {
+        	for (int j = 0; j < fieldSize; ++j) {
+                	dataForCommit[(i - upBorder) * fieldSize + j] = field[i][j];
+                }
+        }
 	gatherCommit(dataForCommit, (downBorder - upBorder) * fieldSize, id, numWorkers, fieldSize);
 	return;
 	}
