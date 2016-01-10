@@ -142,9 +142,7 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
 		}
 		field = writeField;
 		//Проверка на stop
-		if (mpiTest != 2) {
-			MPI_Test(req, &mpiTest, MPI_STATUS_IGNORE);
-		}
+		MPI_Test(req, &mpiTest, MPI_STATUS_IGNORE);
 		if(mpiTest == 1) {
 			if (up != id) {
                 	        MPI_Send(dataForUp, fieldSize, MPI_UNSIGNED_SHORT, up, messageType::DOWN_DATA, MPI_COMM_WORLD);
@@ -161,6 +159,7 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
 					minCommitNum = commitNums[i];
 				}
 			}
+			printf("Worker %d sending commit #%d\n", id, minCommitNum);
 			if (minCommitNum != commitNum) {
 				gatherCommit(prevCommit, (downBorder - upBorder) * fieldSize, id, numWorkers, fieldSize);
 			} else {

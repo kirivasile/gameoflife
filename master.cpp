@@ -70,15 +70,6 @@ void runCommand(int numIterations) {
 	for (int i = 1; i < numWorkers + 1; ++i) {
 		MPI_Send(data, dataSize, MPI_UNSIGNED_SHORT, i, messageType::FIELD_DATA, MPI_COMM_WORLD);		
 	}
-	//srand(time(NULL));
-	//int itToStop = rand() % numIterations;
-	//printf("Demand stop at %d\n", itToStop);
-	//unsigned short int* result = workerRoutine(0, numWorkers, stopSignal, height, numIterations, itToStop);
-	/*for (int i = 0; i < height; ++i) {
-		for (int j = 0; j < height; ++j) {
-			field[i][j] = result[i * height + j] == 1 ? true : false;
-		}
-	}*/	
 }
 
 void timerunCommand(int numIterations) {
@@ -126,13 +117,13 @@ void stopCommand() {
 	*stopSignal = 1;
 	ibcast(stopSignal);
 	unsigned short int* result = gatherCommit(NULL, 0, 0, numWorkers, height);
-	/*printf("Master received\n");
+	state = STARTED;
+	//printf("Master received\n");
 	for (int i = 0; i < height; ++i) {
                 for (int j = 0; j < height; ++j) {
-                       	printf("%d ",result[i * height + j]);
+                       	field[i][j] = result[i * height + j];
                 }
-		printf("\n");
-        }*/
+        }
 	//int stop = 1;
 	//MPI_Send(&stop, 1, MPI_INT, 1, messageType::STOP_SGN, MPI_COMM_WORLD);
 	/*MPI_Status status;
