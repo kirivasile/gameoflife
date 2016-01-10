@@ -71,9 +71,6 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
 	downBorder = min(range * id, fieldSize);
         down = id == numWorkers ? 1 : id + 1;
 	up = id == 1 ? numWorkers : id - 1;
-	if (upBorder - downBorder == 0) {
-		printf("WARNING: worker %d have 0 rows\n", id);
-	}
 	unsigned short int* dataForCommit = new unsigned short int[fieldSize * (downBorder - upBorder)];
 	req2 = new MPI_Request();
 	if (id != 1) {

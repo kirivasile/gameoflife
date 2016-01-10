@@ -1,5 +1,6 @@
 #include "worker.h"
-#include <stdio.h>
+#include <cstdio>
+#include <cstring>
 
 using namespace std;
 
@@ -48,6 +49,7 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
 	while(true) {
 	int upBorder = 0, downBorder = 0;
 	int numIterations, range, down, up, fieldSize;
+	int commitNum = 0;
 	vector<vector<bool> > field;
 	MPI_Status status;
 
@@ -87,6 +89,7 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
         down = id == numWorkers ? 1 : id + 1;
 	up = id == 1 ? numWorkers : id - 1;
 	unsigned short int* dataForCommit = new unsigned short int[fieldSize * (downBorder - upBorder)];
+	unsigned short int* prevCommit = new unsigned short int[fieldSize * (downBorder - upBorder)];
 	int mpiTest = 0;
 	for (int it = 0; it < numIterations; ++it) {
 		vector<vector<bool> > writeField = field;
@@ -143,19 +146,38 @@ void workerRoutine(int id, int numWorkers, MPI_Comm& workerComm) {
 			MPI_Test(req, &mpiTest, MPI_STATUS_IGNORE);
 		}
 		if(mpiTest == 1) {
-			numIterations = min(numIterations, (it / (numIterations /20) + 1) * numIterations / 20);
-			printf("Worker %d caught stopSignal at %d iteration, continue work to %d\n", id, it, numIterations);
-			mpiTest = 2;
+			if (up != id) {
+                	        MPI_Send(dataForUp, fieldSize, MPI_UNSIGNED_SHORT, up, messageType::DOWN_DATA, MPI_COMM_WORLD);
+        	        }
+	                if (down != id) {
+                        	MPI_Send(dataForDown, fieldSize, MPI_UNSIGNED_SHORT, down, messageType::UP_DATA, MPI_COMM_WORLD);
+                	}
+			printf("Worker %d caught stopSignal at %d iteration\n", id, it);
+			int* commitNums = new int[numWorkers];
+			MPI_Allgather(&commitNum, 1, MPI_INT, commitNums, 1, MPI_INT, workerComm);
+			int minCommitNum = numIterations + 1;
+			for (int i = 0; i < numWorkers; ++i) {
+				if (commitNums[i] < minCommitNum) {
+					minCommitNum = commitNums[i];
+				}
+			}
+			if (minCommitNum != commitNum) {
+				gatherCommit(prevCommit, (downBorder - upBorder) * fieldSize, id, numWorkers, fieldSize);
+			} else {
+				gatherCommit(dataForCommit, (downBorder - upBorder) * fieldSize, id, numWorkers, fieldSize);
+			}
+			return;
                 }
-		if (it % (numIterations / 20) == 0) {
-			MPI_Barrier(workerComm);
+		if (it % 100 == 0) {
+			commitNum = it;		
+			for (int i = upBorder; i < downBorder; ++i) {
+         		       	for (int j = 0; j < fieldSize; ++j) {
+					prevCommit[(i - upBorder) * fieldSize + j] = dataForCommit[(i - upBorder) * fieldSize + j];
+    		                	dataForCommit[(i - upBorder) * fieldSize + j] = field[i][j];
+                		}
+        		}
 		}
 	}
-	for (int i = upBorder; i < downBorder; ++i) {
-        	for (int j = 0; j < fieldSize; ++j) {
-                	dataForCommit[(i - upBorder) * fieldSize + j] = field[i][j];
-                }
-        }
 	gatherCommit(dataForCommit, (downBorder - upBorder) * fieldSize, id, numWorkers, fieldSize);
 	return;
 	}
